@@ -1,0 +1,70 @@
+:root {
+  --bg: #0b0b10;
+  --bg-raised: #131319;
+  --bg-inset: #0f0f14;
+  --border: #232330;
+  --text: #f2f0eb;
+  --text-dim: #9d9ba8;
+  --text-faint: #67667a;
+
+  --violet: #7b5fff;
+  --coral: #ff5f7e;
+  --violet-dim: #7b5fff33;
+  --coral-dim: #ff5f7e33;
+
+  --success: #5fe0a8;
+  --error: #ff6b6b;
+
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}
+
+::selection {
+  background: var(--violet-dim);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

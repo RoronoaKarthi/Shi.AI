@@ -1,0 +1,50 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header__mark {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--violet), var(--coral));
+}
+
+.header__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.header__nav {
+  display: flex;
+  gap: 28px;
+}
+
+.header__nav a {
+  text-decoration: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  transition: color 0.15s ease;
+}
+
+.header__nav a:hover {
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .header {
+    padding: 20px 20px;
+  }
+}

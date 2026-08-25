@@ -1,0 +1,22 @@
+{
+  "name": "faceswap-backend",
+  "version": "1.0.0",
+  "description": "Backend API for image/GIF/video face swap tool",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@gradio/client": "^2.5.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "gifwrap": "^0.10.1",
+    "multer": "^1.4.5-lts.1",
+    "nanoid": "^5.0.7",
+    "node-fetch": "^3.3.2",
+    "pngjs": "^7.0.0"
+  }
+}
