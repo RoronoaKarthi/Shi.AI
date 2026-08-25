@@ -5,6 +5,7 @@ import fs from "fs/promises";
 import { nanoid } from "nanoid";
 import provider from "../services/faceSwapProvider.js";
 import { createJob, updateJob, getJob } from "../jobs/jobStore.js";
+import { getHistoryItems, addHistoryItem, deleteHistoryItem } from "../jobs/historyStore.js";
 
 const router = express.Router();
 
@@ -18,21 +19,6 @@ const uploadFields = upload.fields([
   { name: "target", maxCount: 1 },
 ]);
 
-// A consent acknowledgement is required on every request. This is a basic
-// guardrail, not a substitute for real moderation/ToS enforcement — see
-// README for recommendations before going to production.
-function requireConsent(req, res, next) {
-  if (req.body?.consent !== "true") {
-    return res.status(400).json({
-      error:
-        "consent_required",
-      message:
-        "You must confirm you have the right to use both uploaded images/media before processing.",
-    });
-  }
-  next();
-}
-
 async function cleanup(files) {
   await Promise.all(
     files.map((f) => fs.unlink(f).catch(() => {}))
@@ -40,7 +26,7 @@ async function cleanup(files) {
 }
 
 // POST /api/swap/image
-router.post("/image", uploadFields, requireConsent, async (req, res) => {
+router.post("/image", uploadFields, async (req, res) => {
   const sourceFace = req.files?.sourceFace?.[0];
   const target = req.files?.target?.[0];
   if (!sourceFace || !target) {
@@ -51,6 +37,12 @@ router.post("/image", uploadFields, requireConsent, async (req, res) => {
       sourceFacePath: sourceFace.path,
       targetImagePath: target.path,
     });
+    
+    // Save to history
+    const id = nanoid(10);
+    const ext = target.originalname ? path.extname(target.originalname).substring(1) : "png";
+    await addHistoryItem({ id, type: "image", fileBuffer: resultBuffer, ext });
+
     res.set("Content-Type", target.mimetype || "image/png");
     res.send(resultBuffer);
   } catch (err) {
@@ -61,7 +53,7 @@ router.post("/image", uploadFields, requireConsent, async (req, res) => {
 });
 
 // POST /api/swap/gif
-router.post("/gif", uploadFields, requireConsent, async (req, res) => {
+router.post("/gif", uploadFields, async (req, res) => {
   const sourceFace = req.files?.sourceFace?.[0];
   const target = req.files?.target?.[0];
   if (!sourceFace || !target) {
@@ -72,6 +64,11 @@ router.post("/gif", uploadFields, requireConsent, async (req, res) => {
       sourceFacePath: sourceFace.path,
       targetGifPath: target.path,
     });
+
+    // Save to history
+    const id = nanoid(10);
+    await addHistoryItem({ id, type: "gif", fileBuffer: resultBuffer, ext: "gif" });
+
     res.set("Content-Type", "image/gif");
     res.send(resultBuffer);
   } catch (err) {
@@ -81,8 +78,8 @@ router.post("/gif", uploadFields, requireConsent, async (req, res) => {
   }
 });
 
-// POST /api/swap/video  -> returns a jobId immediately (video processing is async)
-router.post("/video", uploadFields, requireConsent, async (req, res) => {
+// POST /api/swap/video
+router.post("/video", uploadFields, async (req, res) => {
   const sourceFace = req.files?.sourceFace?.[0];
   const target = req.files?.target?.[0];
   if (!sourceFace || !target) {
@@ -93,7 +90,7 @@ router.post("/video", uploadFields, requireConsent, async (req, res) => {
   createJob(jobId);
   res.status(202).json({ jobId, status: "queued" });
 
-  // Fire and forget — progress/result is polled via /api/jobs/:id
+  // Fire and forget
   (async () => {
     try {
       updateJob(jobId, { status: "processing" });
@@ -103,6 +100,10 @@ router.post("/video", uploadFields, requireConsent, async (req, res) => {
       );
       const outPath = path.join(process.cwd(), "uploads", `${jobId}-result.mp4`);
       await fs.writeFile(outPath, resultBuffer);
+
+      // Save to history
+      await addHistoryItem({ id: jobId, type: "video", fileBuffer: resultBuffer, ext: "mp4" });
+
       updateJob(jobId, { status: "done", progress: 100, resultPath: outPath });
     } catch (err) {
       updateJob(jobId, { status: "error", error: err.message });
@@ -112,7 +113,7 @@ router.post("/video", uploadFields, requireConsent, async (req, res) => {
   })();
 });
 
-// GET /api/jobs/:id — poll job status; when done, includes a download URL
+// GET /api/jobs/:id
 router.get("/jobs/:id", (req, res) => {
   const job = getJob(req.params.id);
   if (!job) return res.status(404).json({ error: "not_found" });
@@ -133,6 +134,30 @@ router.get("/jobs/:id/download", async (req, res) => {
     return res.status(404).json({ error: "not_ready" });
   }
   res.download(job.resultPath, "faceswap-result.mp4");
+});
+
+// GET /api/history
+router.get("/history", async (req, res) => {
+  try {
+    const items = await getHistoryItems();
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: err.message });
+  }
+});
+
+// DELETE /api/history/:id
+router.delete("/history/:id", async (req, res) => {
+  try {
+    const success = await deleteHistoryItem(req.params.id);
+    if (success) {
+      res.json({ ok: true });
+    } else {
+      res.status(404).json({ error: "not_found" });
+    }
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: err.message });
+  }
 });
 
 export default router;

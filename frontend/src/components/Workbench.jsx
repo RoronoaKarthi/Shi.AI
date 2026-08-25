@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import UploadSlot from "./UploadSlot.jsx";
 import "./Workbench.css";
 
@@ -14,14 +14,43 @@ export default function Workbench() {
   const [mode, setMode] = useState("image");
   const [sourceFace, setSourceFace] = useState(null);
   const [target, setTarget] = useState(null);
-  const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState("idle"); // idle | working | done | error
   const [progress, setProgress] = useState(0);
   const [resultUrl, setResultUrl] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [history, setHistory] = useState([]);
 
   const activeMode = MODES.find((m) => m.id === mode);
-  const canSubmit = sourceFace && target && consent && status !== "working";
+  const canSubmit = sourceFace && target && status !== "working";
+
+  // Fetch history list
+  async function fetchHistory() {
+    try {
+      const res = await fetch(`${API_BASE}/api/history`);
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch history:", err);
+    }
+  }
+
+  // Delete history item
+  async function handleDeleteHistory(id) {
+    try {
+      const res = await fetch(`${API_BASE}/api/history/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        fetchHistory();
+      }
+    } catch (err) {
+      console.error("Failed to delete history item:", err);
+    }
+  }
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
 
   function resetOutputs() {
     setStatus("idle");
@@ -44,7 +73,7 @@ export default function Workbench() {
     const form = new FormData();
     form.append("sourceFace", sourceFace);
     form.append("target", target);
-    form.append("consent", "true");
+    form.append("consent", "true"); // satisfied by default
 
     try {
       if (mode === "video") {
@@ -61,6 +90,7 @@ export default function Workbench() {
         const blob = await res.blob();
         setResultUrl(URL.createObjectURL(blob));
         setStatus("done");
+        fetchHistory(); // Refresh history
       }
     } catch (err) {
       setErrorMsg(err.message);
@@ -81,6 +111,7 @@ export default function Workbench() {
       if (data.status === "done") {
         setResultUrl(`${API_BASE}/api/jobs/${jobId}/download`);
         setStatus("done");
+        fetchHistory(); // Refresh history
         return;
       }
       setTimeout(poll, 900);
@@ -155,7 +186,11 @@ export default function Workbench() {
               ) : (
                 <img src={resultUrl} alt="Face swap result" />
               )}
-              <a className="workbench__download" href={resultUrl} download>
+              <a 
+                className="workbench__download" 
+                href={resultUrl} 
+                download={`shu-ai-swapped.${mode === "video" ? "mp4" : mode === "gif" ? "gif" : "png"}`}
+              >
                 Download result
               </a>
             </div>
@@ -164,18 +199,6 @@ export default function Workbench() {
       </div>
 
       <div className="workbench__footer">
-        <label className="consent">
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-          />
-          <span>
-            I confirm I have the right to use both uploaded files, and I won't
-            use this to depict a real person without their permission.
-          </span>
-        </label>
-
         <button
           className="workbench__submit"
           disabled={!canSubmit}
@@ -184,6 +207,40 @@ export default function Workbench() {
           {status === "working" ? "Working…" : `Swap ${activeMode.label.toLowerCase()}`}
         </button>
       </div>
+
+      {history.length > 0 && (
+        <div className="workbench__history">
+          <h3 className="history__title">Recent Swaps (Deleted after 24h)</h3>
+          <div className="history__grid">
+            {history.map((item) => (
+              <div key={item.id} className="history__card">
+                <div className="history__media-container">
+                  {item.type === "video" ? (
+                    <video src={`${API_BASE}${item.url}`} muted controls preload="metadata" />
+                  ) : (
+                    <img src={`${API_BASE}${item.url}`} alt="history item" />
+                  )}
+                </div>
+                <div className="history__card-actions">
+                  <a
+                    href={`${API_BASE}${item.url}`}
+                    download={`shu-ai-swapped-${item.id}.${item.type === "video" ? "mp4" : item.type === "gif" ? "gif" : "png"}`}
+                    className="history__btn history__btn--download"
+                  >
+                    Download
+                  </a>
+                  <button
+                    onClick={() => handleDeleteHistory(item.id)}
+                    className="history__btn history__btn--delete"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -5,6 +5,7 @@
 // In this custom provider, we connect to public, free Hugging Face Spaces:
 //   - "tonyassi/face-swap" for images and animated GIFs (frame-by-frame)
 //   - "tonyassi/video-face-swap" for videos
+//   - "sczhou/CodeFormer" for ultra high-quality face enhancement
 //
 // No API key is required.
 
@@ -38,6 +39,30 @@ const mockProvider = {
   },
 };
 
+// Helper for face restoration via CodeFormer
+async function enhanceFace(imageBlob) {
+  try {
+    console.log("[Shu AI] Enhancing face using sczhou/CodeFormer...");
+    const enhanceApp = await Client.connect("sczhou/CodeFormer");
+    const enhanceResult = await enhanceApp.predict("/inference", {
+      image: imageBlob,
+      face_align: true,
+      background_enhance: true,
+      face_upsample: true,
+      upscale: 2,
+      codeformer_fidelity: 0.5,
+    });
+    if (enhanceResult && enhanceResult.data && enhanceResult.data[0] && enhanceResult.data[0].url) {
+      console.log("[Shu AI] Face enhanced successfully!");
+      const res = await fetch(enhanceResult.data[0].url);
+      return Buffer.from(await res.arrayBuffer());
+    }
+  } catch (err) {
+    console.error("[Shu AI] CodeFormer enhancement failed, using original swapped image:", err.message);
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Custom provider — connects to free Hugging Face Spaces via Gradio API.
 // ---------------------------------------------------------------------------
@@ -60,7 +85,13 @@ const customProvider = {
 
       if (result && result.data && result.data[0] && result.data[0].url) {
         const imgRes = await fetch(result.data[0].url);
-        return Buffer.from(await imgRes.arrayBuffer());
+        const swappedBuffer = Buffer.from(await imgRes.arrayBuffer());
+        
+        // Auto enhance using CodeFormer
+        const swappedBlob = new Blob([swappedBuffer], { type: "image/png" });
+        const enhancedBuffer = await enhanceFace(swappedBlob);
+        
+        return enhancedBuffer || swappedBuffer;
       } else {
         throw new Error("No face detected or face swap space returned empty response.");
       }
@@ -82,8 +113,8 @@ const customProvider = {
       const gif = await GifUtil.read(gifBuffer);
       console.log(`[Shu AI] GIF frames count: ${gif.frames.length}`);
 
-      // Process up to 15 frames to prevent timeouts/rate limits
-      const maxFrames = Math.min(gif.frames.length, 15);
+      // Process up to 10 frames to prevent timeouts/rate limits
+      const maxFrames = Math.min(gif.frames.length, 10);
       const framesToProcess = gif.frames.slice(0, maxFrames);
       const swappedFrames = [];
 
@@ -107,7 +138,12 @@ const customProvider = {
           const swappedImgRes = await fetch(result.data[0].url);
           const swappedImgBuffer = Buffer.from(await swappedImgRes.arrayBuffer());
 
-          const swappedPng = PNG.sync.read(swappedImgBuffer);
+          // Enhance frame
+          const swappedBlob = new Blob([swappedImgBuffer], { type: "image/png" });
+          const enhancedBuffer = await enhanceFace(swappedBlob);
+          const finalBuffer = enhancedBuffer || swappedImgBuffer;
+
+          const swappedPng = PNG.sync.read(finalBuffer);
 
           const swappedFrame = new GifFrame(swappedPng.width, swappedPng.height, swappedPng.data, {
             delayCentiseconds: frame.delayCentiseconds,
