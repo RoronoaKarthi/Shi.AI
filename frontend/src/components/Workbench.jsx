@@ -19,6 +19,7 @@ export default function Workbench() {
   const [resultUrl, setResultUrl] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [history, setHistory] = useState([]);
+  const [previewItem, setPreviewItem] = useState(null); // Modal preview state
 
   const activeMode = MODES.find((m) => m.id === mode);
   const canSubmit = sourceFace && target && status !== "working";
@@ -42,6 +43,9 @@ export default function Workbench() {
       const res = await fetch(`${API_BASE}/api/history/${id}`, { method: "DELETE" });
       if (res.ok) {
         fetchHistory();
+        if (previewItem && previewItem.id === id) {
+          setPreviewItem(null); // Close preview if currently open
+        }
       }
     } catch (err) {
       console.error("Failed to delete history item:", err);
@@ -73,7 +77,7 @@ export default function Workbench() {
     const form = new FormData();
     form.append("sourceFace", sourceFace);
     form.append("target", target);
-    form.append("consent", "true"); // satisfied by default
+    form.append("consent", "true");
 
     try {
       if (mode === "video") {
@@ -90,7 +94,7 @@ export default function Workbench() {
         const blob = await res.blob();
         setResultUrl(URL.createObjectURL(blob));
         setStatus("done");
-        fetchHistory(); // Refresh history
+        fetchHistory();
       }
     } catch (err) {
       setErrorMsg(err.message);
@@ -111,7 +115,7 @@ export default function Workbench() {
       if (data.status === "done") {
         setResultUrl(`${API_BASE}/api/jobs/${jobId}/download`);
         setStatus("done");
-        fetchHistory(); // Refresh history
+        fetchHistory();
         return;
       }
       setTimeout(poll, 900);
@@ -214,9 +218,14 @@ export default function Workbench() {
           <div className="history__grid">
             {history.map((item) => (
               <div key={item.id} className="history__card">
-                <div className="history__media-container">
+                <div 
+                  className="history__media-container" 
+                  onClick={() => setPreviewItem(item)}
+                  style={{ cursor: "zoom-in" }}
+                  title="Click to preview"
+                >
                   {item.type === "video" ? (
-                    <video src={`${API_BASE}${item.url}`} muted controls preload="metadata" />
+                    <video src={`${API_BASE}${item.url}`} muted preload="metadata" />
                   ) : (
                     <img src={`${API_BASE}${item.url}`} alt="history item" />
                   )}
@@ -238,6 +247,31 @@ export default function Workbench() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Preview Component */}
+      {previewItem && (
+        <div className="modal-backdrop" onClick={() => setPreviewItem(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setPreviewItem(null)}>×</button>
+            <div className="modal-body">
+              {previewItem.type === "video" ? (
+                <video src={`${API_BASE}${previewItem.url}`} controls autoPlay loop />
+              ) : (
+                <img src={`${API_BASE}${previewItem.url}`} alt="Full preview" />
+              )}
+            </div>
+            <div className="modal-footer">
+              <a
+                href={`${API_BASE}${previewItem.url}`}
+                download={`shu-ai-swapped-${previewItem.id}.${previewItem.type === "video" ? "mp4" : previewItem.type === "gif" ? "gif" : "png"}`}
+                className="modal-download-btn"
+              >
+                Download Swapped Media
+              </a>
+            </div>
           </div>
         </div>
       )}
