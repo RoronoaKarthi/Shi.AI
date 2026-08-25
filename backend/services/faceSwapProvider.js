@@ -49,7 +49,7 @@ async function enhanceFace(imageBlob) {
       face_align: true,
       background_enhance: true,
       face_upsample: true,
-      upscale: 2,
+      upscale: 4,
       codeformer_fidelity: 0.5,
     });
     if (enhanceResult && enhanceResult.data && enhanceResult.data[0] && enhanceResult.data[0].url) {
