@@ -109,7 +109,17 @@ const customProvider = {
       const srcBuffer = await fs.readFile(sourceFacePath);
       const srcBlob = new Blob([srcBuffer], { type: "image/png" });
 
-      const gifBuffer = await fs.readFile(targetGifPath);
+      let gifBuffer = await fs.readFile(targetGifPath);
+      
+      // Clean buffer of malformed GIFs that have trailing junk bytes after trailer byte 0x3B
+      if (gifBuffer[gifBuffer.length - 1] !== 0x3b) {
+        const lastTrailerIndex = gifBuffer.lastIndexOf(0x3b);
+        if (lastTrailerIndex !== -1) {
+          console.log(`[Shu AI] Truncating trailing garbage bytes from GIF buffer. Original: ${gifBuffer.length}, Cleaned: ${lastTrailerIndex + 1}`);
+          gifBuffer = gifBuffer.slice(0, lastTrailerIndex + 1);
+        }
+      }
+
       const gif = await GifUtil.read(gifBuffer);
       console.log(`[Shu AI] GIF frames count: ${gif.frames.length}`);
 
@@ -143,13 +153,34 @@ const customProvider = {
           const enhancedBuffer = await enhanceFace(swappedBlob);
           const finalBuffer = enhancedBuffer || swappedImgBuffer;
 
-          const swappedPng = PNG.sync.read(finalBuffer);
-
-          const swappedFrame = new GifFrame(swappedPng.width, swappedPng.height, swappedPng.data, {
-            delayCentiseconds: frame.delayCentiseconds,
-            disposalMethod: frame.disposalMethod,
-          });
-          swappedFrames.push(swappedFrame);
+          // Safe PNG parsing
+          try {
+            const swappedPng = PNG.sync.read(finalBuffer);
+            const swappedFrame = new GifFrame(swappedPng.width, swappedPng.height, swappedPng.data, {
+              delayCentiseconds: frame.delayCentiseconds,
+              disposalMethod: frame.disposalMethod,
+            });
+            swappedFrames.push(swappedFrame);
+          } catch (pngErr) {
+            console.error(`[Shu AI] Failed to parse enhanced PNG for frame ${i + 1}:`, pngErr.message);
+            if (finalBuffer !== swappedImgBuffer) {
+              try {
+                // Retry with unenhanced buffer
+                const swappedPng = PNG.sync.read(swappedImgBuffer);
+                const swappedFrame = new GifFrame(swappedPng.width, swappedPng.height, swappedPng.data, {
+                  delayCentiseconds: frame.delayCentiseconds,
+                  disposalMethod: frame.disposalMethod,
+                });
+                swappedFrames.push(swappedFrame);
+                continue;
+              } catch (innerPngErr) {
+                console.error(`[Shu AI] Failed to parse unenhanced PNG for frame ${i + 1}:`, innerPngErr.message);
+              }
+            }
+            // Use original frame if all parsing fails
+            console.warn(`[Shu AI] Falling back to original frame ${i + 1}`);
+            swappedFrames.push(frame);
+          }
         } else {
           console.warn(`[Shu AI] Swapping failed for frame ${i + 1}, using original frame as fallback.`);
           swappedFrames.push(frame);
