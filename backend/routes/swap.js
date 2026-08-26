@@ -32,15 +32,25 @@ router.post("/image", uploadFields, async (req, res) => {
   if (!sourceFace || !target) {
     return res.status(400).json({ error: "missing_files", message: "sourceFace and target are both required." });
   }
+
+  const sourceExt = path.extname(sourceFace.originalname) || ".png";
+  const targetExt = path.extname(target.originalname) || ".png";
+  const sourcePath = `${sourceFace.path}${sourceExt}`;
+  const targetPath = `${target.path}${targetExt}`;
+
   try {
+    // Rename files to preserve original extensions
+    await fs.rename(sourceFace.path, sourcePath);
+    await fs.rename(target.path, targetPath);
+
     const resultBuffer = await provider.swapImage({
-      sourceFacePath: sourceFace.path,
-      targetImagePath: target.path,
+      sourceFacePath: sourcePath,
+      targetImagePath: targetPath,
     });
     
     // Save to history
     const id = nanoid(10);
-    const ext = target.originalname ? path.extname(target.originalname).substring(1) : "png";
+    const ext = targetExt.substring(1) || "png";
     await addHistoryItem({ id, type: "image", fileBuffer: resultBuffer, ext });
 
     res.set("Content-Type", target.mimetype || "image/png");
@@ -48,7 +58,7 @@ router.post("/image", uploadFields, async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: "provider_error", message: err.message });
   } finally {
-    cleanup([sourceFace.path, target.path]);
+    cleanup([sourcePath, targetPath, sourceFace.path, target.path]);
   }
 });
 
@@ -59,10 +69,20 @@ router.post("/gif", uploadFields, async (req, res) => {
   if (!sourceFace || !target) {
     return res.status(400).json({ error: "missing_files", message: "sourceFace and target are both required." });
   }
+
+  const sourceExt = path.extname(sourceFace.originalname) || ".png";
+  const targetExt = path.extname(target.originalname) || ".gif";
+  const sourcePath = `${sourceFace.path}${sourceExt}`;
+  const targetPath = `${target.path}${targetExt}`;
+
   try {
+    // Rename files to preserve original extensions
+    await fs.rename(sourceFace.path, sourcePath);
+    await fs.rename(target.path, targetPath);
+
     const resultBuffer = await provider.swapGif({
-      sourceFacePath: sourceFace.path,
-      targetGifPath: target.path,
+      sourceFacePath: sourcePath,
+      targetGifPath: targetPath,
     });
 
     // Save to history
@@ -74,7 +94,7 @@ router.post("/gif", uploadFields, async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: "provider_error", message: err.message });
   } finally {
-    cleanup([sourceFace.path, target.path]);
+    cleanup([sourcePath, targetPath, sourceFace.path, target.path]);
   }
 });
 
@@ -86,6 +106,11 @@ router.post("/video", uploadFields, async (req, res) => {
     return res.status(400).json({ error: "missing_files", message: "sourceFace and target are both required." });
   }
 
+  const sourceExt = path.extname(sourceFace.originalname) || ".png";
+  const targetExt = path.extname(target.originalname) || ".mp4";
+  const sourcePath = `${sourceFace.path}${sourceExt}`;
+  const targetPath = `${target.path}${targetExt}`;
+
   const jobId = nanoid(10);
   createJob(jobId);
   res.status(202).json({ jobId, status: "queued" });
@@ -93,9 +118,13 @@ router.post("/video", uploadFields, async (req, res) => {
   // Fire and forget
   (async () => {
     try {
+      // Rename files to preserve original extensions
+      await fs.rename(sourceFace.path, sourcePath);
+      await fs.rename(target.path, targetPath);
+
       updateJob(jobId, { status: "processing" });
       const resultBuffer = await provider.swapVideo(
-        { sourceFacePath: sourceFace.path, targetVideoPath: target.path },
+        { sourceFacePath: sourcePath, targetVideoPath: targetPath },
         (pct) => updateJob(jobId, { progress: pct })
       );
       const outPath = path.join(process.cwd(), "uploads", `${jobId}-result.mp4`);
@@ -108,7 +137,7 @@ router.post("/video", uploadFields, async (req, res) => {
     } catch (err) {
       updateJob(jobId, { status: "error", error: err.message });
     } finally {
-      cleanup([sourceFace.path, target.path]);
+      cleanup([sourcePath, targetPath, sourceFace.path, target.path]);
     }
   })();
 });
