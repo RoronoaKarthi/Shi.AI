@@ -39,22 +39,40 @@ const mockProvider = {
   },
 };
 
+// Helper for running Gradio submissions using AsyncIterators to track status and progress
+async function runGradioSubmit(app, endpoint, payload, onStatus) {
+  const job = app.submit(endpoint, payload);
+  let lastData = null;
+  for await (const msg of job) {
+    if (msg.type === "status") {
+      onStatus?.(msg);
+    } else if (msg.type === "data") {
+      lastData = msg.data;
+    }
+  }
+  return lastData;
+}
+
 // Helper for face restoration via CodeFormer
 async function enhanceFace(imageBlob) {
   try {
     console.log("[Shu AI] Enhancing face using sczhou/CodeFormer...");
     const enhanceApp = await Client.connect("sczhou/CodeFormer");
-    const enhanceResult = await enhanceApp.predict("/inference", {
+    
+    const resultData = await runGradioSubmit(enhanceApp, "/inference", {
       image: imageBlob,
       face_align: true,
       background_enhance: true,
       face_upsample: true,
       upscale: 4,
       codeformer_fidelity: 0.5,
+    }, (status) => {
+      console.log(`[Shu AI] CodeFormer Status: stage=${status.stage}, position=${status.position ?? 0}`);
     });
-    if (enhanceResult && enhanceResult.data && enhanceResult.data[0] && enhanceResult.data[0].url) {
+
+    if (resultData && resultData[0] && resultData[0].url) {
       console.log("[Shu AI] Face enhanced successfully!");
-      const res = await fetch(enhanceResult.data[0].url);
+      const res = await fetch(resultData[0].url);
       return Buffer.from(await res.arrayBuffer());
     }
   } catch (err) {
@@ -78,13 +96,15 @@ const customProvider = {
       const srcBlob = new Blob([srcBuffer], { type: "image/png" });
       const destBlob = new Blob([destBuffer], { type: "image/png" });
 
-      const result = await app.predict("/swap_faces", {
+      const resultData = await runGradioSubmit(app, "/swap_faces", {
         src_img: srcBlob,
         dest_img: destBlob,
+      }, (status) => {
+        console.log(`[Shu AI] Image Swap Status: stage=${status.stage}, position=${status.position ?? 0}`);
       });
 
-      if (result && result.data && result.data[0] && result.data[0].url) {
-        const imgRes = await fetch(result.data[0].url);
+      if (resultData && resultData[0] && resultData[0].url) {
+        const imgRes = await fetch(resultData[0].url);
         const swappedBuffer = Buffer.from(await imgRes.arrayBuffer());
         
         // Auto enhance using CodeFormer
@@ -139,13 +159,15 @@ const customProvider = {
         const pngBlob = new Blob([pngBuffer], { type: "image/png" });
 
         // Call the face swap space
-        const result = await app.predict("/swap_faces", {
+        const resultData = await runGradioSubmit(app, "/swap_faces", {
           src_img: srcBlob,
           dest_img: pngBlob,
+        }, (status) => {
+          console.log(`[Shu AI] GIF Frame ${i + 1} Status: stage=${status.stage}, position=${status.position ?? 0}`);
         });
 
-        if (result && result.data && result.data[0] && result.data[0].url) {
-          const swappedImgRes = await fetch(result.data[0].url);
+        if (resultData && resultData[0] && resultData[0].url) {
+          const swappedImgRes = await fetch(resultData[0].url);
           const swappedImgBuffer = Buffer.from(await swappedImgRes.arrayBuffer());
 
           // Enhance frame
@@ -222,17 +244,19 @@ const customProvider = {
         }
       }, 3000);
 
-      const result = await app.predict("/generate", {
+      const resultData = await runGradioSubmit(app, "/generate", {
         input_image: srcBlob,
         input_video: videoBlob,
         gender: "all",
+      }, (status) => {
+        console.log(`[Shu AI] Video Swap Status: stage=${status.stage}, position=${status.position ?? 0}`);
       });
 
       clearInterval(interval);
       onProgress?.(100);
 
-      if (result && result.data && result.data[0] && result.data[0].url) {
-        const videoRes = await fetch(result.data[0].url);
+      if (resultData && resultData[0] && resultData[0].url) {
+        const videoRes = await fetch(resultData[0].url);
         return Buffer.from(await videoRes.arrayBuffer());
       } else {
         throw new Error("No video output url returned from face swap video space.");
