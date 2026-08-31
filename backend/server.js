@@ -27,6 +27,22 @@ app.get("/api/health", (req, res) => {
 app.use("/api/swap", swapRouter);
 app.use("/api", swapRouter);
 
+// Serve static frontend files in production
+const frontendDistPath = fs.existsSync(path.join(process.cwd(), "frontend", "dist"))
+  ? path.join(process.cwd(), "frontend", "dist")
+  : path.join(process.cwd(), "..", "frontend", "dist");
+
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+  
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDistPath, "index.html"));
+  });
+}
+
 app.use((err, req, res, next) => {
   if (err?.code === "LIMIT_FILE_SIZE") {
     return res.status(413).json({ error: "file_too_large", message: "Upload exceeds MAX_UPLOAD_MB." });

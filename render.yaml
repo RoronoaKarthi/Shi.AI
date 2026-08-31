@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: shi-ai-face-swap
+    runtime: node
+    buildCommand: npm run build
+    startCommand: npm run start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: FACE_SWAP_PROVIDER
+        value: mock
+      - key: MAX_UPLOAD_MB
+        value: 10
