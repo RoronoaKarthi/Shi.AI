@@ -118,33 +118,31 @@ router.post("/video", uploadFields, async (req, res) => {
 
   const jobId = nanoid(10);
   createJob(jobId);
-  res.status(202).json({ jobId, status: "queued" });
 
-  // Fire and forget
-  (async () => {
-    try {
-      // Rename files to preserve original extensions
-      await fs.rename(sourceFace.path, sourcePath);
-      await fs.rename(target.path, targetPath);
+  try {
+    // Rename files to preserve original extensions
+    await fs.rename(sourceFace.path, sourcePath);
+    await fs.rename(target.path, targetPath);
 
-      updateJob(jobId, { status: "processing" });
-      const resultBuffer = await provider.swapVideo(
-        { sourceFacePath: sourcePath, targetVideoPath: targetPath },
-        (pct) => updateJob(jobId, { progress: pct })
-      );
-      const outPath = path.join(UPLOADS_DIR, `${jobId}-result.mp4`);
-      await fs.writeFile(outPath, resultBuffer);
+    updateJob(jobId, { status: "processing" });
+    const resultBuffer = await provider.swapVideo(
+      { sourceFacePath: sourcePath, targetVideoPath: targetPath },
+      (pct) => updateJob(jobId, { progress: pct })
+    );
+    const outPath = path.join(UPLOADS_DIR, `${jobId}-result.mp4`);
+    await fs.writeFile(outPath, resultBuffer);
 
-      // Save to history
-      await addHistoryItem({ id: jobId, type: "video", fileBuffer: resultBuffer, ext: "mp4" });
+    // Save to history
+    await addHistoryItem({ id: jobId, type: "video", fileBuffer: resultBuffer, ext: "mp4" });
 
-      updateJob(jobId, { status: "done", progress: 100, resultPath: outPath });
-    } catch (err) {
-      updateJob(jobId, { status: "error", error: err.message });
-    } finally {
-      cleanup([sourcePath, targetPath, sourceFace.path, target.path]);
-    }
-  })();
+    updateJob(jobId, { status: "done", progress: 100, resultPath: outPath });
+    res.status(202).json({ jobId, status: "done" });
+  } catch (err) {
+    updateJob(jobId, { status: "error", error: err.message });
+    res.status(502).json({ error: "provider_error", message: err.message });
+  } finally {
+    cleanup([sourcePath, targetPath, sourceFace.path, target.path]);
+  }
 });
 
 // GET /api/jobs/:id
