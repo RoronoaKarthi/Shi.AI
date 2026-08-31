@@ -51,11 +51,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "server_error", message: "Something went wrong." });
 });
 
-app.listen(PORT, () => {
-  console.log(`Face swap backend running on http://localhost:${PORT} (provider: ${PROVIDER})`);
-  
-  // Run hourly cleanup for 1-day auto-expiring history items
-  setInterval(cleanupExpiredHistory, 60 * 60 * 1000);
-  // Run immediately on start
-  cleanupExpiredHistory().catch(() => {});
-});
+export default app;
+
+// Only listen when running locally/directly (not in Vercel serverless)
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Face swap backend running on http://localhost:${PORT} (provider: ${PROVIDER})`);
+    
+    // Run hourly cleanup for 1-day auto-expiring history items
+    setInterval(cleanupExpiredHistory, 60 * 60 * 1000);
+    // Run immediately on start
+    cleanupExpiredHistory().catch(() => {});
+  });
+}
