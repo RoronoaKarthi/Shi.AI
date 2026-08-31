@@ -7,8 +7,11 @@
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
+import os from "os";
 
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+const UPLOADS_DIR = process.env.VERCEL
+  ? os.tmpdir()
+  : path.join(process.cwd(), "uploads");
 const HISTORY_DIR = path.join(UPLOADS_DIR, "history");
 const HISTORY_FILE = path.join(HISTORY_DIR, "history.json");
 

@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs/promises";
+import os from "os";
 import { nanoid } from "nanoid";
 import provider from "../services/faceSwapProvider.js";
 import { createJob, updateJob, getJob } from "../jobs/jobStore.js";
@@ -9,8 +10,12 @@ import { getHistoryItems, addHistoryItem, deleteHistoryItem } from "../jobs/hist
 
 const router = express.Router();
 
+const UPLOADS_DIR = process.env.VERCEL
+  ? os.tmpdir()
+  : path.join(process.cwd(), "uploads");
+
 const upload = multer({
-  dest: path.join(process.cwd(), "uploads"),
+  dest: UPLOADS_DIR,
   limits: { fileSize: (Number(process.env.MAX_UPLOAD_MB) || 50) * 1024 * 1024 },
 });
 
@@ -127,7 +132,7 @@ router.post("/video", uploadFields, async (req, res) => {
         { sourceFacePath: sourcePath, targetVideoPath: targetPath },
         (pct) => updateJob(jobId, { progress: pct })
       );
-      const outPath = path.join(process.cwd(), "uploads", `${jobId}-result.mp4`);
+      const outPath = path.join(UPLOADS_DIR, `${jobId}-result.mp4`);
       await fs.writeFile(outPath, resultBuffer);
 
       // Save to history

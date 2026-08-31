@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import swapRouter from "./routes/swap.js";
 import { PROVIDER } from "./services/faceSwapProvider.js";
 import { cleanupExpiredHistory } from "./jobs/historyStore.js";
@@ -11,7 +12,9 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // Ensure uploads dir exists
-const uploadsDir = path.join(process.cwd(), "uploads");
+const uploadsDir = process.env.VERCEL
+  ? os.tmpdir()
+  : path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 app.use(cors());
