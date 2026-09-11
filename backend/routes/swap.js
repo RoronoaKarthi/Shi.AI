@@ -2,13 +2,18 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs/promises";
+import os from "os";
 import provider from "../services/faceSwapProvider.js";
 import { addSwapRecord } from "../services/historyService.js";
 
 const router = express.Router();
 
+const UPLOADS_DIR = process.env.VERCEL
+  ? os.tmpdir()
+  : path.join(process.cwd(), "uploads");
+
 const upload = multer({
-  dest: path.join(process.cwd(), "uploads"),
+  dest: UPLOADS_DIR,
   limits: { fileSize: (Number(process.env.MAX_UPLOAD_MB) || 50) * 1024 * 1024 },
 });
 
