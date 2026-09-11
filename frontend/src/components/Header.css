@@ -2,9 +2,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 40px;
-  max-width: 1200px;
+  padding: 16px 32px;
+  max-width: 1280px;
+  width: 100%;
   margin: 0 auto;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.7);
 }
 
 .header__brand {
@@ -13,38 +15,87 @@
   gap: 10px;
 }
 
-.header__mark {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--violet), var(--coral));
+.header__logo-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.28);
 }
 
 .header__name {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 800;
   font-size: 20px;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.header__badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #4f46e5;
+  background: rgba(99, 102, 241, 0.1);
+  padding: 3px 9px;
+  border-radius: 999px;
 }
 
 .header__nav {
   display: flex;
-  gap: 28px;
+  align-items: center;
+  gap: 8px;
 }
 
-.header__nav a {
+.header__nav-item {
   text-decoration: none;
-  color: var(--text-dim);
-  font-size: 14px;
-  transition: color 0.15s ease;
+  color: #64748b;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  transition: all 0.15s ease;
 }
 
-.header__nav a:hover {
-  color: var(--text);
+.header__nav-item:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+.header__nav-item--active {
+  color: #4f46e5;
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.header__btn-signin {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.header__btn-signin:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+@media (max-width: 840px) {
+  .header__nav {
+    display: none;
+  }
 }
 
 @media (max-width: 640px) {
   .header {
-    padding: 20px 20px;
+    padding: 14px 18px;
   }
 }

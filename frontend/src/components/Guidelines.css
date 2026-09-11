@@ -7,9 +7,11 @@
 
 .guidelines h2 {
   font-family: var(--font-display);
-  font-size: 22px;
-  margin: 40px 0 24px;
+  font-size: 24px;
+  font-weight: 700;
+  margin: 20px 0 24px;
   letter-spacing: -0.02em;
+  color: var(--text);
 }
 
 .guidelines__grid {
@@ -22,18 +24,28 @@
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: 22px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+}
+
+.guidelines__card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 
 .guidelines__card h3 {
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 700;
   margin: 0 0 8px;
   font-family: var(--font-display);
+  color: var(--text);
 }
 
 .guidelines__card p {
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--text-dim);
   margin: 0;
 }

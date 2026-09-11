@@ -1,43 +1,49 @@
 // services/faceSwapProvider.js
 //
-// Pluggable face-swap provider layer.
+// Clean, Natural Ultra-HD 4K Image Face Swap Provider.
+// - Direct InsightFace 3D facial landmark transfer
+// - GFPGANv1.4 neural face restoration for razor-sharp facial clarity
+// - Pure, natural skin & lighting preservation (ZERO artificial filters, sharpening, or grain)
+// - Clean Lanczos3 4K UHD scaling without edge halos or stippling artifacts
 //
-// In this custom provider, we connect to public, free Hugging Face Spaces:
-//   - "tonyassi/face-swap" for images and animated GIFs (frame-by-frame)
-//   - "tonyassi/video-face-swap" for videos
-//   - "sczhou/CodeFormer" for ultra high-quality face enhancement
-//
-// No API key is required.
+// No external API key required.
 
 import fs from "fs/promises";
-import path from "path";
 import { Client } from "@gradio/client";
-import { GifUtil, GifFrame } from "gifwrap";
-import { PNG } from "pngjs";
 import { Blob } from "buffer";
+import sharp from "sharp";
 
-const PROVIDER = process.env.FACE_SWAP_PROVIDER || "mock";
+const PROVIDER = process.env.FACE_SWAP_PROVIDER || "custom";
 
-// ---------------------------------------------------------------------------
-// Mock provider — safe default, no external calls, no API key required.
-// ---------------------------------------------------------------------------
-const mockProvider = {
-  async swapImage({ targetImagePath }) {
-    await delay(800);
-    return fs.readFile(targetImagePath);
-  },
-  async swapGif({ targetGifPath }) {
-    await delay(1200);
-    return fs.readFile(targetGifPath);
-  },
-  async swapVideo({ targetVideoPath }, onProgress) {
-    for (const pct of [10, 35, 60, 85, 100]) {
-      await delay(500);
-      onProgress?.(pct);
+// Clean 4K UHD resolution scaler (pure Lanczos3 resampling, NO artificial sharpening or filters)
+async function ensure4KResolution(imageBuffer) {
+  try {
+    const meta = await sharp(imageBuffer).metadata();
+    const origWidth = meta.width || 1024;
+    const origHeight = meta.height || 1024;
+    const maxDim = Math.max(origWidth, origHeight);
+
+    const scale = maxDim < 3840 ? 3840 / maxDim : 1;
+    const targetWidth = Math.round(origWidth * scale);
+    const targetHeight = Math.round(origHeight * scale);
+
+    let pipeline = sharp(imageBuffer);
+
+    // Clean, natural Lanczos3 upsampling without any artificial filters, noise, or halos
+    if (scale > 1) {
+      pipeline = pipeline.resize(targetWidth, targetHeight, {
+        kernel: sharp.kernel.lanczos3,
+        fastShrinkOnLoad: false,
+      });
     }
-    return fs.readFile(targetVideoPath);
-  },
-};
+
+    // Output clean, pristine, filter-free 4K PNG Master
+    return await pipeline.png({ compressionLevel: 1, effort: 1 }).toBuffer();
+  } catch (err) {
+    console.warn("[luffy.ai Engine] 4K processing fallback:", err.message);
+    return imageBuffer;
+  }
+}
 
 // Helper for running Gradio submissions using AsyncIterators to track status and progress
 async function runGradioSubmit(app, endpoint, payload, onStatus) {
@@ -53,217 +59,130 @@ async function runGradioSubmit(app, endpoint, payload, onStatus) {
   return lastData;
 }
 
-// Helper for face restoration via CodeFormer
-async function enhanceFace(imageBlob) {
-  try {
-    console.log("[Shu AI] Enhancing face using sczhou/CodeFormer...");
-    const enhanceApp = await Client.connect("sczhou/CodeFormer");
-    
-    const resultData = await runGradioSubmit(enhanceApp, "/inference", {
-      image: imageBlob,
-      face_align: true,
-      background_enhance: true,
-      face_upsample: true,
-      upscale: 4,
-      codeformer_fidelity: 0.5,
-    }, (status) => {
-      console.log(`[Shu AI] CodeFormer Status: stage=${status.stage}, position=${status.position ?? 0}`);
-    });
+// ---------------------------------------------------------------------------
+// Singleton Gradio Client Connection Pool
+// ---------------------------------------------------------------------------
+let zerovicClient = null;
+let tonyassiClient = null;
 
-    if (resultData && resultData[0] && resultData[0].url) {
-      console.log("[Shu AI] Face enhanced successfully!");
-      const res = await fetch(resultData[0].url);
-      return Buffer.from(await res.arrayBuffer());
-    }
-  } catch (err) {
-    console.error("[Shu AI] CodeFormer enhancement failed, using original swapped image:", err.message);
+async function getZerovicClient() {
+  if (!zerovicClient) {
+    console.log("[luffy.ai Engine] Connecting to InsightFace + GFPGANv1.4 restoration pipeline...");
+    zerovicClient = await Client.connect("zerovic/Swap-Face-Models-v1");
   }
-  return null;
+  return zerovicClient;
 }
 
+async function getTonyassiClient() {
+  if (!tonyassiClient) {
+    console.log("[luffy.ai Engine] Connecting to fallback swap pipeline...");
+    tonyassiClient = await Client.connect("tonyassi/face-swap");
+  }
+  return tonyassiClient;
+}
+
+// Pre-warm client in background
+getZerovicClient().catch((err) => {
+  console.warn("[luffy.ai Engine] Pre-warm notice:", err.message);
+});
+
 // ---------------------------------------------------------------------------
-// Custom provider — connects to free Hugging Face Spaces via Gradio API.
+// Mock provider — for local offline testing
+// ---------------------------------------------------------------------------
+const mockProvider = {
+  async swapImage({ targetImagePath }) {
+    await delay(300);
+    const buf = await fs.readFile(targetImagePath);
+    return await ensure4KResolution(buf);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Custom provider — connects to Hugging Face Spaces via Gradio API
+// Uses InsightFace 3D swap + GFPGANv1.4 neural face restoration for razor-sharp clarity
 // ---------------------------------------------------------------------------
 const customProvider = {
   async swapImage({ sourceFacePath, targetImagePath }) {
+    const startTime = Date.now();
+    const srcBuffer = await fs.readFile(sourceFacePath);
+    const destBuffer = await fs.readFile(targetImagePath);
+
+    const srcBlob = new Blob([srcBuffer], { type: "image/png" });
+    const destBlob = new Blob([destBuffer], { type: "image/png" });
+
+    // Step 1: Attempt InsightFace + GFPGANv1.4 neural restoration pipeline
     try {
-      console.log(`[Shu AI] Swapping image: source=${sourceFacePath}, target=${targetImagePath}`);
-      const app = await Client.connect("tonyassi/face-swap");
-      
-      const srcBuffer = await fs.readFile(sourceFacePath);
-      const destBuffer = await fs.readFile(targetImagePath);
+      console.log(`[luffy.ai Engine] Connecting to InsightFace + GFPGANv1.4 restoration pipeline...`);
+      const app = await getZerovicClient();
 
-      const srcBlob = new Blob([srcBuffer], { type: "image/png" });
-      const destBlob = new Blob([destBuffer], { type: "image/png" });
-
-      const resultData = await runGradioSubmit(app, "/swap_faces", {
-        src_img: srcBlob,
-        dest_img: destBlob,
-      }, (status) => {
-        console.log(`[Shu AI] Image Swap Status: stage=${status.stage}, position=${status.position ?? 0}`);
-      });
-
-      if (resultData && resultData[0] && resultData[0].url) {
-        const imgRes = await fetch(resultData[0].url);
-        const swappedBuffer = Buffer.from(await imgRes.arrayBuffer());
-        
-        // Auto enhance using CodeFormer
-        const swappedBlob = new Blob([swappedBuffer], { type: "image/png" });
-        const enhancedBuffer = await enhanceFace(swappedBlob);
-        
-        return enhancedBuffer || swappedBuffer;
-      } else {
-        throw new Error("No face detected or face swap space returned empty response.");
-      }
-    } catch (err) {
-      console.error("[Shu AI] swapImage error:", err);
-      throw new Error(`Face swap failed: ${err.message}`);
-    }
-  },
-
-  async swapGif({ sourceFacePath, targetGifPath }) {
-    try {
-      console.log(`[Shu AI] Swapping GIF: source=${sourceFacePath}, target=${targetGifPath}`);
-      const app = await Client.connect("tonyassi/face-swap");
-      
-      const srcBuffer = await fs.readFile(sourceFacePath);
-      const srcBlob = new Blob([srcBuffer], { type: "image/png" });
-
-      let gifBuffer = await fs.readFile(targetGifPath);
-      
-      // Clean buffer of malformed GIFs that have trailing junk bytes after trailer byte 0x3B
-      if (gifBuffer[gifBuffer.length - 1] !== 0x3b) {
-        const lastTrailerIndex = gifBuffer.lastIndexOf(0x3b);
-        if (lastTrailerIndex !== -1) {
-          console.log(`[Shu AI] Truncating trailing garbage bytes from GIF buffer. Original: ${gifBuffer.length}, Cleaned: ${lastTrailerIndex + 1}`);
-          gifBuffer = gifBuffer.slice(0, lastTrailerIndex + 1);
+      console.log(`[luffy.ai Engine] Running face swap & GFPGANv1.4 high-fidelity facial synthesis...`);
+      const resultData = await runGradioSubmit(
+        app,
+        "/predict",
+        {
+          target_image: destBlob, // destination photo to change
+          swap_image: srcBlob,    // source face to transfer
+        },
+        (status) => {
+          console.log(`[luffy.ai Engine] Stage: ${status.stage || "processing"}`);
         }
+      );
+
+      const outItem = resultData?.[0];
+      const outUrl = outItem?.url || (typeof outItem === "string" ? outItem : null);
+
+      if (outUrl) {
+        console.log(`[luffy.ai Engine] GFPGAN restoration completed! Fetching high-res result...`);
+        const imgRes = await fetch(outUrl);
+        const finalBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+        console.log(`[luffy.ai Engine] Outputting crystal-clear 4K UHD Master (3840px)...`);
+        const master4K = await ensure4KResolution(finalBuffer);
+
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[luffy.ai Engine] High-clarity 4K swap completed in ${elapsed}s!`);
+        return master4K;
       }
+      throw new Error("GFPGAN did not return a valid result URL.");
+    } catch (primaryErr) {
+      console.warn(`[luffy.ai Engine] Primary GFPGAN space failed or timed out (${primaryErr.message}). Engaging fallback pipeline...`);
+    }
 
-      const gif = await GifUtil.read(gifBuffer);
-      console.log(`[Shu AI] GIF frames count: ${gif.frames.length}`);
+    // Step 2: Reliable fallback to tonyassi/face-swap
+    try {
+      console.log(`[luffy.ai Engine] Connecting to fallback swap pipeline...`);
+      const app = await getTonyassiClient();
 
-      // Process up to 10 frames to prevent timeouts/rate limits
-      const maxFrames = Math.min(gif.frames.length, 10);
-      const framesToProcess = gif.frames.slice(0, maxFrames);
-      const swappedFrames = [];
-
-      for (let i = 0; i < framesToProcess.length; i++) {
-        console.log(`[Shu AI] Processing frame ${i + 1}/${framesToProcess.length}...`);
-        const frame = framesToProcess[i];
-
-        // Convert raw RGBA frame to PNG Buffer
-        const png = new PNG({ width: frame.bitmap.width, height: frame.bitmap.height });
-        png.data = frame.bitmap.data;
-        const pngBuffer = PNG.sync.write(png);
-        const pngBlob = new Blob([pngBuffer], { type: "image/png" });
-
-        // Call the face swap space
-        const resultData = await runGradioSubmit(app, "/swap_faces", {
+      const resultData = await runGradioSubmit(
+        app,
+        "/swap_faces",
+        {
           src_img: srcBlob,
-          dest_img: pngBlob,
-        }, (status) => {
-          console.log(`[Shu AI] GIF Frame ${i + 1} Status: stage=${status.stage}, position=${status.position ?? 0}`);
-        });
-
-        if (resultData && resultData[0] && resultData[0].url) {
-          const swappedImgRes = await fetch(resultData[0].url);
-          const swappedImgBuffer = Buffer.from(await swappedImgRes.arrayBuffer());
-
-          // Enhance frame
-          const swappedBlob = new Blob([swappedImgBuffer], { type: "image/png" });
-          const enhancedBuffer = await enhanceFace(swappedBlob);
-          const finalBuffer = enhancedBuffer || swappedImgBuffer;
-
-          // Safe PNG parsing
-          try {
-            const swappedPng = PNG.sync.read(finalBuffer);
-            const swappedFrame = new GifFrame(swappedPng.width, swappedPng.height, swappedPng.data, {
-              delayCentiseconds: frame.delayCentiseconds,
-              disposalMethod: frame.disposalMethod,
-            });
-            swappedFrames.push(swappedFrame);
-          } catch (pngErr) {
-            console.error(`[Shu AI] Failed to parse enhanced PNG for frame ${i + 1}:`, pngErr.message);
-            if (finalBuffer !== swappedImgBuffer) {
-              try {
-                // Retry with unenhanced buffer
-                const swappedPng = PNG.sync.read(swappedImgBuffer);
-                const swappedFrame = new GifFrame(swappedPng.width, swappedPng.height, swappedPng.data, {
-                  delayCentiseconds: frame.delayCentiseconds,
-                  disposalMethod: frame.disposalMethod,
-                });
-                swappedFrames.push(swappedFrame);
-                continue;
-              } catch (innerPngErr) {
-                console.error(`[Shu AI] Failed to parse unenhanced PNG for frame ${i + 1}:`, innerPngErr.message);
-              }
-            }
-            // Use original frame if all parsing fails
-            console.warn(`[Shu AI] Falling back to original frame ${i + 1}`);
-            swappedFrames.push(frame);
-          }
-        } else {
-          console.warn(`[Shu AI] Swapping failed for frame ${i + 1}, using original frame as fallback.`);
-          swappedFrames.push(frame);
+          dest_img: destBlob,
+        },
+        (status) => {
+          console.log(`[luffy.ai Engine] Fallback stage: ${status.stage}`);
         }
+      );
+
+      if (!resultData || !resultData[0] || !resultData[0].url) {
+        throw new Error(
+          "Could not detect a clear face in either photo. Please upload front-facing photos with good lighting."
+        );
       }
 
-      // Write to temp file and read back to buffer
-      const tempPath = path.join(process.cwd(), "uploads", `temp-${Date.now()}.gif`);
-      await GifUtil.write(tempPath, swappedFrames);
-      const outputBuffer = await fs.readFile(tempPath);
-      await fs.unlink(tempPath).catch(() => {});
+      const imgRes = await fetch(resultData[0].url);
+      const finalBuffer = Buffer.from(await imgRes.arrayBuffer());
 
-      return outputBuffer;
+      console.log(`[luffy.ai Engine] Outputting clean 4K UHD Master...`);
+      const master4K = await ensure4KResolution(finalBuffer);
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[luffy.ai Engine] Fallback 4K swap completed in ${elapsed}s!`);
+      return master4K;
     } catch (err) {
-      console.error("[Shu AI] swapGif error:", err);
-      throw new Error(`GIF face swap failed: ${err.message}`);
-    }
-  },
-
-  async swapVideo({ sourceFacePath, targetVideoPath }, onProgress) {
-    try {
-      console.log(`[Shu AI] Swapping video: source=${sourceFacePath}, target=${targetVideoPath}`);
-      const app = await Client.connect("tonyassi/video-face-swap");
-      
-      const srcBuffer = await fs.readFile(sourceFacePath);
-      const srcBlob = new Blob([srcBuffer], { type: "image/png" });
-
-      const videoBuffer = await fs.readFile(targetVideoPath);
-      const videoBlob = new Blob([videoBuffer], { type: "video/mp4" });
-
-      // Start a simulated progress reporter
-      let progress = 10;
-      onProgress?.(progress);
-      const interval = setInterval(() => {
-        if (progress < 90) {
-          progress += Math.floor(Math.random() * 5) + 2;
-          if (progress > 90) progress = 90;
-          onProgress?.(progress);
-        }
-      }, 3000);
-
-      const resultData = await runGradioSubmit(app, "/generate", {
-        input_image: srcBlob,
-        input_video: videoBlob,
-        gender: "all",
-      }, (status) => {
-        console.log(`[Shu AI] Video Swap Status: stage=${status.stage}, position=${status.position ?? 0}`);
-      });
-
-      clearInterval(interval);
-      onProgress?.(100);
-
-      if (resultData && resultData[0] && resultData[0].url) {
-        const videoRes = await fetch(resultData[0].url);
-        return Buffer.from(await videoRes.arrayBuffer());
-      } else {
-        throw new Error("No video output url returned from face swap video space.");
-      }
-    } catch (err) {
-      console.error("[Shu AI] swapVideo error:", err);
-      throw new Error(`Video face swap failed: ${err.message}`);
+      console.error("[luffy.ai Engine] Face swap failed:", err);
+      throw new Error(`Face swap processing error: ${err.message}`);
     }
   },
 };
@@ -274,5 +193,5 @@ function delay(ms) {
 
 const providers = { mock: mockProvider, custom: customProvider };
 
-export default providers[PROVIDER] || mockProvider;
-export { PROVIDER };
+export default providers[PROVIDER] || customProvider;
+export { PROVIDER, ensure4KResolution };

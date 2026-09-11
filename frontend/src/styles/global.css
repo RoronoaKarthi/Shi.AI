@@ -1,26 +1,36 @@
 :root {
-  --bg: #0b0b10;
-  --bg-raised: #131319;
-  --bg-inset: #0f0f14;
-  --border: #232330;
-  --text: #f2f0eb;
-  --text-dim: #9d9ba8;
-  --text-faint: #67667a;
+  --bg: #f8fafc;
+  --bg-raised: #ffffff;
+  --bg-inset: #f1f5f9;
+  --border: #e2e8f0;
+  --border-hover: #cbd5e1;
+  --text: #0f172a;
+  --text-dim: #475569;
+  --text-faint: #94a3b8;
 
-  --violet: #7b5fff;
-  --coral: #ff5f7e;
-  --violet-dim: #7b5fff33;
-  --coral-dim: #ff5f7e33;
+  --violet: #6366f1;
+  --violet-hover: #4f46e5;
+  --violet-dark: #4338ca;
+  --coral: #f43f5e;
+  --violet-dim: rgba(99, 102, 241, 0.1);
+  --coral-dim: rgba(244, 63, 94, 0.1);
 
-  --success: #5fe0a8;
-  --error: #ff6b6b;
+  --success: #10b981;
+  --error: #ef4444;
 
-  --font-display: "Space Grotesk", sans-serif;
-  --font-body: "Inter", sans-serif;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 14px -1px rgba(15, 23, 42, 0.07), 0 2px 6px -2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 14px 28px -4px rgba(15, 23, 42, 0.09), 0 4px 8px -4px rgba(15, 23, 42, 0.04);
+  --shadow-xl: 0 20px 35px -5px rgba(15, 23, 42, 0.12), 0 8px 12px -6px rgba(15, 23, 42, 0.06);
+
+  --font-display: "Plus Jakarta Sans", "Inter", -apple-system, sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 
-  --radius: 14px;
-  --radius-sm: 8px;
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
 }
 
 * {
@@ -39,6 +49,8 @@ body {
 
 #root {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 a {
@@ -51,7 +63,7 @@ button {
 
 ::selection {
   background: var(--violet-dim);
-  color: var(--text);
+  color: var(--violet);
 }
 
 :focus-visible {

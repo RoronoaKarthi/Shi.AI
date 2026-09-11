@@ -6,7 +6,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://localhost:4000",
+      "/api": {
+        target: "http://localhost:4000",
+        changeOrigin: true,
+        timeout: 300000, // 5 minutes for 4K AI processing
+      },
     },
   },
 });

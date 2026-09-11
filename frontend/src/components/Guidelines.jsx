@@ -3,7 +3,7 @@ import "./Guidelines.css";
 const RULES = [
   {
     title: "Consent, always",
-    body: "Only upload faces and footage you have permission to use — your own, or someone who's explicitly agreed.",
+    body: "Only upload faces and portraits you have permission to use — your own, or someone who's explicitly agreed.",
   },
   {
     title: "No real public figures",
