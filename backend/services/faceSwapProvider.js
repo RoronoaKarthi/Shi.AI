@@ -9,11 +9,31 @@
 // No external API key required.
 
 import fs from "fs/promises";
+import net from "node:net";
+if (net.setDefaultAutoSelectFamily) {
+  net.setDefaultAutoSelectFamily(false);
+}
+
 import { Client } from "@gradio/client";
 import { Blob } from "buffer";
 import sharp from "sharp";
 
 const PROVIDER = process.env.FACE_SWAP_PROVIDER || "custom";
+
+// Robust image downloader with automatic retry and redirect following
+async function downloadImageResult(url) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, { redirect: "follow" });
+      if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+      return Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      console.warn(`[luffy.ai Engine] Result download attempt ${attempt} warning: ${err.message}`);
+      if (attempt === 3) throw err;
+      await delay(800);
+    }
+  }
+}
 
 // Clean 4K UHD resolution scaler (pure Lanczos3 resampling, NO artificial sharpening or filters)
 async function ensure4KResolution(imageBuffer) {
@@ -133,8 +153,7 @@ const customProvider = {
 
       if (outUrl) {
         console.log(`[luffy.ai Engine] GFPGAN restoration completed! Fetching high-res result...`);
-        const imgRes = await fetch(outUrl);
-        const finalBuffer = Buffer.from(await imgRes.arrayBuffer());
+        const finalBuffer = await downloadImageResult(outUrl);
 
         console.log(`[luffy.ai Engine] Outputting crystal-clear 4K UHD Master (3840px)...`);
         const master4K = await ensure4KResolution(finalBuffer);
@@ -171,8 +190,7 @@ const customProvider = {
         );
       }
 
-      const imgRes = await fetch(resultData[0].url);
-      const finalBuffer = Buffer.from(await imgRes.arrayBuffer());
+      const finalBuffer = await downloadImageResult(resultData[0].url);
 
       console.log(`[luffy.ai Engine] Outputting clean 4K UHD Master...`);
       const master4K = await ensure4KResolution(finalBuffer);

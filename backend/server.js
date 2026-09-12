@@ -1,4 +1,9 @@
 import "dotenv/config";
+import net from "node:net";
+if (net.setDefaultAutoSelectFamily) {
+  net.setDefaultAutoSelectFamily(false);
+}
+
 import express from "express";
 import cors from "cors";
 import fs from "fs";
@@ -73,8 +78,13 @@ app.use((err, req, res, next) => {
 
 export default app;
 
-// Only listen when running standalone (not in Vercel serverless functions)
-if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+// Only listen when running standalone directly via 'node server.js'
+const isDirectRun = process.argv[1] && (
+  process.argv[1].endsWith("server.js") || 
+  process.argv[1].endsWith("server")
+);
+
+if (isDirectRun && !process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
   const server = app.listen(PORT, () => {
     console.log(`4K Face swap backend running on http://localhost:${PORT} (provider: ${PROVIDER})`);
   });

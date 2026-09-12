@@ -28,20 +28,27 @@ function ensureStorage() {
 
 ensureStorage();
 
+let inMemoryHistory = [];
+
 async function readHistory() {
   try {
     const raw = await fs.readFile(HISTORY_FILE, "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      inMemoryHistory = parsed;
+      return parsed;
+    }
+  } catch {}
+  return inMemoryHistory;
 }
 
 async function saveHistory(items) {
+  inMemoryHistory = items;
   try {
+    ensureStorage();
     await fs.writeFile(HISTORY_FILE, JSON.stringify(items, null, 2), "utf-8");
   } catch (err) {
-    console.error("[History Service] Failed to save history.json:", err.message);
+    console.warn("[History Service] In-memory storage fallback:", err.message);
   }
 }
 
@@ -108,21 +115,26 @@ export async function addSwapRecord(imageBuffer, metadata = {}) {
 
 // Retrieve active history list
 export async function getActiveHistory() {
-  await cleanupExpired();
-  const items = await readHistory();
-  const now = Date.now();
+  try {
+    await cleanupExpired();
+    const items = await readHistory();
+    const now = Date.now();
 
-  return items.map((item) => {
-    const remainingMs = Math.max(0, item.expiresAt - now);
-    const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
-    const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+    return items.map((item) => {
+      const remainingMs = Math.max(0, item.expiresAt - now);
+      const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
+      const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
 
-    return {
-      ...item,
-      remainingTime: `${remainingHours}h ${remainingMinutes}m`,
-      remainingMs,
-    };
-  });
+      return {
+        ...item,
+        remainingTime: `${remainingHours}h ${remainingMinutes}m`,
+        remainingMs,
+      };
+    });
+  } catch (err) {
+    console.warn("[History Service] getActiveHistory fallback:", err.message);
+    return inMemoryHistory || [];
+  }
 }
 
 // Delete single item by ID

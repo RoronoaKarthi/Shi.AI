@@ -18,9 +18,10 @@ const HISTORY_DIR = path.join(BASE_UPLOADS, "history");
 router.get("/", async (req, res) => {
   try {
     const history = await getActiveHistory();
-    res.json({ ok: true, history });
+    res.json({ ok: true, history: history || [] });
   } catch (err) {
-    res.status(500).json({ error: "history_error", message: err.message });
+    console.warn("[History Route] Fallback returning empty history:", err.message);
+    res.json({ ok: true, history: [] });
   }
 });
 
