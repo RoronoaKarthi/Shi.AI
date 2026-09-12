@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import {
   getActiveHistory,
   deleteHistoryItem,
@@ -8,7 +9,10 @@ import {
 } from "../services/historyService.js";
 
 const router = express.Router();
-const HISTORY_DIR = path.join(process.cwd(), "uploads", "history");
+const BASE_UPLOADS = process.env.VERCEL
+  ? path.join(os.tmpdir(), "luffy-uploads")
+  : path.join(process.cwd(), "uploads");
+const HISTORY_DIR = path.join(BASE_UPLOADS, "history");
 
 // GET /api/history — list active 24h history
 router.get("/", async (req, res) => {

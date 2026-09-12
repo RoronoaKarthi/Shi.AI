@@ -13,6 +13,7 @@ build/
 
 # Local uploads and logs
 backend/uploads/
+uploads/
 *.log
 .system_generated/
 .DS_Store

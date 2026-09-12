@@ -13,9 +13,11 @@ const PORT = process.env.PORT || 4000;
 
 // Ensure uploads dir exists
 const uploadsDir = process.env.VERCEL
-  ? os.tmpdir()
+  ? path.join(os.tmpdir(), "luffy-uploads")
   : path.join(process.cwd(), "uploads");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+try {
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+} catch (e) {}
 
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
@@ -30,10 +32,20 @@ app.use((req, res, next) => {
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, provider: PROVIDER, outputResolution: "4K UHD (3840px)" });
 });
+app.get("/health", (req, res) => {
+  res.json({ ok: true, provider: PROVIDER, outputResolution: "4K UHD (3840px)" });
+});
 
+// Mount both prefixed and direct paths for maximum proxy/serverless compatibility
 app.use("/api/swap", swapRouter);
+app.use("/swap", swapRouter);
 app.use("/api/history", historyRouter);
+app.use("/history", historyRouter);
 app.use("/api", swapRouter);
+
+// Serve uploads folder statically so history files can be loaded by frontend
+app.use("/uploads", express.static(uploadsDir));
+app.use("/api/uploads", express.static(uploadsDir));
 
 // Serve static frontend files in production
 const frontendDistPath = fs.existsSync(path.join(process.cwd(), "frontend", "dist"))
@@ -61,8 +73,8 @@ app.use((err, req, res, next) => {
 
 export default app;
 
-// Only listen when running locally/directly (not in Vercel serverless)
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+// Only listen when running standalone (not in Vercel serverless functions)
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
   const server = app.listen(PORT, () => {
     console.log(`4K Face swap backend running on http://localhost:${PORT} (provider: ${PROVIDER})`);
   });

@@ -1,21 +1,32 @@
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
+import os from "os";
 import crypto from "crypto";
 
-const HISTORY_DIR = path.join(process.cwd(), "uploads", "history");
+const BASE_UPLOADS = process.env.VERCEL
+  ? path.join(os.tmpdir(), "luffy-uploads")
+  : path.join(process.cwd(), "uploads");
+
+const HISTORY_DIR = path.join(BASE_UPLOADS, "history");
 const HISTORY_FILE = path.join(HISTORY_DIR, "history.json");
 const RETENTION_MS = 24 * 60 * 60 * 1000; // 24 Hours in milliseconds
 
-// Ensure directory exists
-if (!fsSync.existsSync(HISTORY_DIR)) {
-  fsSync.mkdirSync(HISTORY_DIR, { recursive: true });
+// Safe storage initialization (works in read-only serverless filesystems)
+function ensureStorage() {
+  try {
+    if (!fsSync.existsSync(HISTORY_DIR)) {
+      fsSync.mkdirSync(HISTORY_DIR, { recursive: true });
+    }
+    if (!fsSync.existsSync(HISTORY_FILE)) {
+      fsSync.writeFileSync(HISTORY_FILE, JSON.stringify([], null, 2));
+    }
+  } catch (err) {
+    console.warn("[History Service] Storage init warning:", err.message);
+  }
 }
 
-// Ensure history.json exists
-if (!fsSync.existsSync(HISTORY_FILE)) {
-  fsSync.writeFileSync(HISTORY_FILE, JSON.stringify([], null, 2));
-}
+ensureStorage();
 
 async function readHistory() {
   try {
@@ -139,7 +150,9 @@ export async function clearAllHistory() {
   return true;
 }
 
-// Run cleanup every 15 minutes
-setInterval(cleanupExpired, 15 * 60 * 1000);
-// Run initial cleanup
-cleanupExpired();
+// Run periodic cleanup every 15 minutes in persistent server environments
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  setInterval(cleanupExpired, 15 * 60 * 1000);
+}
+// Run initial cleanup safely
+cleanupExpired().catch(() => {});
