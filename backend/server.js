@@ -41,12 +41,11 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, provider: PROVIDER, outputResolution: "4K UHD (3840px)" });
 });
 
-// Mount both prefixed and direct paths for maximum proxy/serverless compatibility
+// Mount explicit endpoints for maximum proxy/serverless compatibility
 app.use("/api/swap", swapRouter);
 app.use("/swap", swapRouter);
 app.use("/api/history", historyRouter);
 app.use("/history", historyRouter);
-app.use("/api", swapRouter);
 
 // Serve uploads folder statically so history files can be loaded by frontend
 app.use("/uploads", express.static(uploadsDir));

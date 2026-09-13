@@ -16,7 +16,19 @@ if (net.setDefaultAutoSelectFamily) {
 
 import { Client } from "@gradio/client";
 import { Blob } from "buffer";
-import sharp from "sharp";
+
+let sharp = null;
+async function getSharp() {
+  if (sharp !== null) return sharp;
+  try {
+    const mod = await import("sharp");
+    sharp = mod.default || mod;
+  } catch (err) {
+    console.warn("[luffy.ai Engine] Sharp native library not available in serverless, using clean buffer fallback:", err.message);
+    sharp = false;
+  }
+  return sharp;
+}
 
 const PROVIDER = process.env.FACE_SWAP_PROVIDER || "custom";
 
@@ -38,7 +50,10 @@ async function downloadImageResult(url) {
 // Clean 4K UHD resolution scaler (pure Lanczos3 resampling, NO artificial sharpening or filters)
 async function ensure4KResolution(imageBuffer) {
   try {
-    const meta = await sharp(imageBuffer).metadata();
+    const sharpInstance = await getSharp();
+    if (!sharpInstance) return imageBuffer;
+
+    const meta = await sharpInstance(imageBuffer).metadata();
     const origWidth = meta.width || 1024;
     const origHeight = meta.height || 1024;
     const maxDim = Math.max(origWidth, origHeight);
@@ -47,12 +62,12 @@ async function ensure4KResolution(imageBuffer) {
     const targetWidth = Math.round(origWidth * scale);
     const targetHeight = Math.round(origHeight * scale);
 
-    let pipeline = sharp(imageBuffer);
+    let pipeline = sharpInstance(imageBuffer);
 
     // Clean, natural Lanczos3 upsampling without any artificial filters, noise, or halos
     if (scale > 1) {
       pipeline = pipeline.resize(targetWidth, targetHeight, {
-        kernel: sharp.kernel.lanczos3,
+        kernel: sharpInstance.kernel.lanczos3,
         fastShrinkOnLoad: false,
       });
     }
@@ -80,31 +95,38 @@ async function runGradioSubmit(app, endpoint, payload, onStatus) {
 }
 
 // ---------------------------------------------------------------------------
-// Singleton Gradio Client Connection Pool
+// On-Demand Gradio Client Connection Pool with Auto-Reconnect
 // ---------------------------------------------------------------------------
 let zerovicClient = null;
 let tonyassiClient = null;
 
 async function getZerovicClient() {
-  if (!zerovicClient) {
-    console.log("[luffy.ai Engine] Connecting to InsightFace + GFPGANv1.4 restoration pipeline...");
+  try {
+    if (!zerovicClient) {
+      console.log("[luffy.ai Engine] Connecting to InsightFace + GFPGANv1.4 restoration pipeline...");
+      zerovicClient = await Client.connect("zerovic/Swap-Face-Models-v1");
+    }
+    return zerovicClient;
+  } catch (err) {
+    console.warn("[luffy.ai Engine] Zerovic connect retry:", err.message);
     zerovicClient = await Client.connect("zerovic/Swap-Face-Models-v1");
+    return zerovicClient;
   }
-  return zerovicClient;
 }
 
 async function getTonyassiClient() {
-  if (!tonyassiClient) {
-    console.log("[luffy.ai Engine] Connecting to fallback swap pipeline...");
+  try {
+    if (!tonyassiClient) {
+      console.log("[luffy.ai Engine] Connecting to high-speed InsightFace swap pipeline...");
+      tonyassiClient = await Client.connect("tonyassi/face-swap");
+    }
+    return tonyassiClient;
+  } catch (err) {
+    console.warn("[luffy.ai Engine] Tonyassi connect retry:", err.message);
     tonyassiClient = await Client.connect("tonyassi/face-swap");
+    return tonyassiClient;
   }
-  return tonyassiClient;
 }
-
-// Pre-warm client in background
-getZerovicClient().catch((err) => {
-  console.warn("[luffy.ai Engine] Pre-warm notice:", err.message);
-});
 
 // ---------------------------------------------------------------------------
 // Mock provider — for local offline testing
@@ -119,89 +141,89 @@ const mockProvider = {
 
 // ---------------------------------------------------------------------------
 // Custom provider — connects to Hugging Face Spaces via Gradio API
-// Uses InsightFace 3D swap + GFPGANv1.4 neural face restoration for razor-sharp clarity
+// Uses InsightFace 3D swap + neural face restoration for razor-sharp clarity
 // ---------------------------------------------------------------------------
 const customProvider = {
   async swapImage({ sourceFacePath, targetImagePath }) {
     const startTime = Date.now();
+    const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
     const srcBuffer = await fs.readFile(sourceFacePath);
     const destBuffer = await fs.readFile(targetImagePath);
 
-    const srcBlob = new Blob([srcBuffer], { type: "image/png" });
-    const destBlob = new Blob([destBuffer], { type: "image/png" });
+    const srcBlob = new Blob([srcBuffer], { type: "image/jpeg" });
+    const destBlob = new Blob([destBuffer], { type: "image/jpeg" });
 
-    // Step 1: Attempt InsightFace + GFPGANv1.4 neural restoration pipeline
-    try {
-      console.log(`[luffy.ai Engine] Connecting to InsightFace + GFPGANv1.4 restoration pipeline...`);
-      const app = await getZerovicClient();
-
-      console.log(`[luffy.ai Engine] Running face swap & GFPGANv1.4 high-fidelity facial synthesis...`);
-      const resultData = await runGradioSubmit(
-        app,
-        "/predict",
-        {
-          target_image: destBlob, // destination photo to change
-          swap_image: srcBlob,    // source face to transfer
-        },
-        (status) => {
-          console.log(`[luffy.ai Engine] Stage: ${status.stage || "processing"}`);
-        }
-      );
-
-      const outItem = resultData?.[0];
-      const outUrl = outItem?.url || (typeof outItem === "string" ? outItem : null);
-
-      if (outUrl) {
-        console.log(`[luffy.ai Engine] GFPGAN restoration completed! Fetching high-res result...`);
-        const finalBuffer = await downloadImageResult(outUrl);
-
-        console.log(`[luffy.ai Engine] Outputting crystal-clear 4K UHD Master (3840px)...`);
-        const master4K = await ensure4KResolution(finalBuffer);
-
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[luffy.ai Engine] High-clarity 4K swap completed in ${elapsed}s!`);
-        return master4K;
-      }
-      throw new Error("GFPGAN did not return a valid result URL.");
-    } catch (primaryErr) {
-      console.warn(`[luffy.ai Engine] Primary GFPGAN space failed or timed out (${primaryErr.message}). Engaging fallback pipeline...`);
-    }
-
-    // Step 2: Reliable fallback to tonyassi/face-swap
-    try {
-      console.log(`[luffy.ai Engine] Connecting to fallback swap pipeline...`);
+    // Pipeline A: Fast GPU-accelerated InsightFace pipeline (Ideal for Vercel 10s timeout)
+    const runFastPipeline = async () => {
+      console.log("[luffy.ai Engine] Running GPU InsightFace swap pipeline...");
       const app = await getTonyassiClient();
+      const res = await app.predict("/swap_faces", {
+        src_img: srcBlob,
+        dest_img: destBlob,
+      });
 
-      const resultData = await runGradioSubmit(
-        app,
-        "/swap_faces",
-        {
-          src_img: srcBlob,
-          dest_img: destBlob,
-        },
-        (status) => {
-          console.log(`[luffy.ai Engine] Fallback stage: ${status.stage}`);
-        }
-      );
-
-      if (!resultData || !resultData[0] || !resultData[0].url) {
-        throw new Error(
-          "Could not detect a clear face in either photo. Please upload front-facing photos with good lighting."
-        );
+      const outItem = res?.data?.[0];
+      const outUrl = outItem?.url || (typeof outItem === "string" ? outItem : null);
+      if (!outUrl) {
+        throw new Error("Could not detect a clear face in either photo. Please upload front-facing photos with good lighting.");
       }
+      return outUrl;
+    };
 
-      const finalBuffer = await downloadImageResult(resultData[0].url);
+    // Pipeline B: InsightFace + GFPGANv1.4 neural restoration pipeline (Deep detail)
+    const runGfpganPipeline = async () => {
+      console.log("[luffy.ai Engine] Running InsightFace + GFPGANv1.4 restoration pipeline...");
+      const app = await getZerovicClient();
+      const res = await app.predict("/predict", {
+        target_image: destBlob,
+        swap_image: srcBlob,
+      });
 
-      console.log(`[luffy.ai Engine] Outputting clean 4K UHD Master...`);
-      const master4K = await ensure4KResolution(finalBuffer);
+      const outItem = res?.data?.[0];
+      const outUrl = outItem?.url || (typeof outItem === "string" ? outItem : null);
+      if (!outUrl) {
+        throw new Error("GFPGAN space did not return a valid result URL.");
+      }
+      return outUrl;
+    };
 
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`[luffy.ai Engine] Fallback 4K swap completed in ${elapsed}s!`);
-      return master4K;
-    } catch (err) {
-      console.error("[luffy.ai Engine] Face swap failed:", err);
-      throw new Error(`Face swap processing error: ${err.message}`);
+    let resultUrl = null;
+
+    if (isServerless) {
+      // In serverless cloud, prioritize the fast GPU pipeline to strictly respect Vercel's 10s ceiling
+      try {
+        resultUrl = await runFastPipeline();
+      } catch (err) {
+        console.warn(`[luffy.ai Engine] Fast pipeline notice (${err.message}), trying GFPGAN pipeline...`);
+        try {
+          resultUrl = await runGfpganPipeline();
+        } catch (err2) {
+          throw new Error(`Face swap processing error: ${err2.message || err.message}`);
+        }
+      }
+    } else {
+      // In local/dedicated environment, attempt GFPGAN first for maximum neural restoration
+      try {
+        resultUrl = await runGfpganPipeline();
+      } catch (err) {
+        console.warn(`[luffy.ai Engine] GFPGAN pipeline notice (${err.message}), trying fallback...`);
+        try {
+          resultUrl = await runFastPipeline();
+        } catch (err2) {
+          throw new Error(`Face swap processing error: ${err2.message || err.message}`);
+        }
+      }
     }
+
+    console.log("[luffy.ai Engine] Downloading high-resolution result...");
+    const rawBuffer = await downloadImageResult(resultUrl);
+
+    console.log("[luffy.ai Engine] Outputting pristine 4K UHD Master...");
+    const master4K = await ensure4KResolution(rawBuffer);
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[luffy.ai Engine] 4K face swap successfully completed in ${elapsed}s!`);
+    return master4K;
   },
 };
 

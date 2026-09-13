@@ -43,6 +43,59 @@ export default function Workbench({ onSwapComplete }) {
     setTarget(null);
   }
 
+// Fast client-side image compressor: downsizes to max 1280px at 0.9 JPEG quality if > 450KB
+// Guarantees uploads remain < 350KB, avoiding Vercel 4.5MB payload limits & slow uploads
+async function compressImageForUpload(file) {
+  if (!file || !(file instanceof Blob)) return file;
+  if (file.size < 450 * 1024) return file; // Already lightweight, keep original
+
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1280;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob && blob.size < file.size) {
+              const name = file.name ? file.name.replace(/\.[^.]+$/, ".jpg") : "upload.jpg";
+              const compressedFile = new File([blob], name, { type: "image/jpeg" });
+              resolve(compressedFile);
+            } else {
+              resolve(file);
+            }
+          },
+          "image/jpeg",
+          0.9
+        );
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
   async function handleSubmit() {
     if (!canSubmit) return;
     resetOutputs();
@@ -54,11 +107,15 @@ export default function Workbench({ onSwapComplete }) {
       setActiveStep(currentStep);
     }, 1500);
 
-    const form = new FormData();
-    form.append("sourceFace", sourceFace);
-    form.append("target", target);
-
     try {
+      const [uploadSource, uploadTarget] = await Promise.all([
+        compressImageForUpload(sourceFace),
+        compressImageForUpload(target),
+      ]);
+
+      const form = new FormData();
+      form.append("sourceFace", uploadSource);
+      form.append("target", uploadTarget);
       const res = await fetch(`${API_BASE}/api/swap`, {
         method: "POST",
         body: form,

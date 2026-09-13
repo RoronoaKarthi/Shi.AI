@@ -1,4 +1,4 @@
-import net from "node:net";
+﻿import net from "node:net";
 if (net.setDefaultAutoSelectFamily) {
   net.setDefaultAutoSelectFamily(false);
 }
