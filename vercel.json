@@ -1,29 +1,10 @@
 {
   "buildCommand": "npm run build --prefix frontend",
   "outputDirectory": "frontend/dist",
-  "functions": {
-    "api/swap.js": {
-      "maxDuration": 60,
-      "memory": 1024
-    },
-    "api/index.js": {
-      "maxDuration": 60,
-      "memory": 1024
-    },
-    "api/history.js": {
-      "maxDuration": 30,
-      "memory": 512
-    }
-  },
   "rewrites": [
     {
-      "source": "/uploads/(.*)",
-      "destination": "/api/history.js"
-    },
-    {
-      "source": "/((?!api/|uploads/|samples/|assets/|favicon.ico).*)",
-      "destination": "/index.html"
+      "source": "/uploads/:path*",
+      "destination": "/api/history"
     }
   ]
 }
-
