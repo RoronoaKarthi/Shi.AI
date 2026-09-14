@@ -72,8 +72,10 @@ async function ensure4KResolution(imageBuffer) {
       });
     }
 
-    // Output clean, pristine, filter-free 4K PNG Master
-    return await pipeline.png({ compressionLevel: 1, effort: 1 }).toBuffer();
+    // Output clean, pristine, filter-free 4K UHD Master (chroma 4:4:4 preservation, within Vercel 4.5MB limit)
+    return await pipeline
+      .jpeg({ quality: 95, chromaSubsampling: "4:4:4", mozjpeg: true })
+      .toBuffer();
   } catch (err) {
     console.warn("[luffy.ai Engine] 4K processing fallback:", err.message);
     return imageBuffer;
@@ -104,12 +106,16 @@ async function getZerovicClient() {
   try {
     if (!zerovicClient) {
       console.log("[luffy.ai Engine] Connecting to InsightFace + GFPGANv1.4 restoration pipeline...");
-      zerovicClient = await Client.connect("zerovic/Swap-Face-Models-v1");
+      zerovicClient = await Client.connect("zerovic/Swap-Face-Models-v1", {
+        hf_token: process.env.HF_TOKEN || undefined,
+      });
     }
     return zerovicClient;
   } catch (err) {
     console.warn("[luffy.ai Engine] Zerovic connect retry:", err.message);
-    zerovicClient = await Client.connect("zerovic/Swap-Face-Models-v1");
+    zerovicClient = await Client.connect("zerovic/Swap-Face-Models-v1", {
+      hf_token: process.env.HF_TOKEN || undefined,
+    });
     return zerovicClient;
   }
 }
@@ -118,12 +124,16 @@ async function getTonyassiClient() {
   try {
     if (!tonyassiClient) {
       console.log("[luffy.ai Engine] Connecting to high-speed InsightFace swap pipeline...");
-      tonyassiClient = await Client.connect("tonyassi/face-swap");
+      tonyassiClient = await Client.connect("tonyassi/face-swap", {
+        hf_token: process.env.HF_TOKEN || undefined,
+      });
     }
     return tonyassiClient;
   } catch (err) {
     console.warn("[luffy.ai Engine] Tonyassi connect retry:", err.message);
-    tonyassiClient = await Client.connect("tonyassi/face-swap");
+    tonyassiClient = await Client.connect("tonyassi/face-swap", {
+      hf_token: process.env.HF_TOKEN || undefined,
+    });
     return tonyassiClient;
   }
 }
@@ -153,39 +163,51 @@ const customProvider = {
     const srcBlob = new Blob([srcBuffer], { type: "image/jpeg" });
     const destBlob = new Blob([destBuffer], { type: "image/jpeg" });
 
-    // Pipeline A: Fast GPU-accelerated InsightFace pipeline (Ideal for Vercel 10s timeout)
+    // Pipeline A: Fast GPU-accelerated InsightFace pipeline
     const runFastPipeline = async () => {
       console.log("[luffy.ai Engine] Running GPU InsightFace swap pipeline...");
-      const app = await getTonyassiClient();
-      const res = await app.predict("/swap_faces", {
-        src_img: srcBlob,
-        dest_img: destBlob,
-      });
+      try {
+        const app = await getTonyassiClient();
+        const res = await app.predict("/swap_faces", {
+          src_img: srcBlob,
+          dest_img: destBlob,
+        });
 
-      const outItem = res?.data?.[0];
-      const outUrl = outItem?.url || (typeof outItem === "string" ? outItem : null);
-      if (!outUrl) {
-        throw new Error("Could not detect a clear face in either photo. Please upload front-facing photos with good lighting.");
+        const outItem = res?.data?.[0];
+        const outUrl = outItem?.url || (typeof outItem === "string" ? outItem : null);
+        if (!outUrl) {
+          throw new Error("Could not detect a clear face in either photo. Please upload front-facing photos with good lighting.");
+        }
+        return outUrl;
+      } catch (err) {
+        tonyassiClient = null;
+        throw err;
       }
-      return outUrl;
     };
 
     // Pipeline B: InsightFace + GFPGANv1.4 neural restoration pipeline (Deep detail)
     const runGfpganPipeline = async () => {
       console.log("[luffy.ai Engine] Running InsightFace + GFPGANv1.4 restoration pipeline...");
-      const app = await getZerovicClient();
-      const res = await app.predict("/predict", {
-        target_image: destBlob,
-        swap_image: srcBlob,
-      });
+      try {
+        const app = await getZerovicClient();
+        const res = await app.predict("/predict", {
+          target_image: destBlob,
+          swap_image: srcBlob,
+        });
 
-      const outItem = res?.data?.[0];
-      const outUrl = outItem?.url || (typeof outItem === "string" ? outItem : null);
-      if (!outUrl) {
-        throw new Error("GFPGAN space did not return a valid result URL.");
+        const outItem = res?.data?.[0];
+        const outUrl = outItem?.url || (typeof outItem === "string" ? outItem : null);
+        if (!outUrl) {
+          throw new Error("GFPGAN space did not return a valid result URL.");
+        }
+        return outUrl;
+      } catch (err) {
+        zerovicClient = null;
+        throw err;
       }
-      return outUrl;
     };
+
+    let resultUrl = null;
 
     // Always prioritize the InsightFace + GFPGANv1.4 neural restoration pipeline for maximum facial clarity
     try {

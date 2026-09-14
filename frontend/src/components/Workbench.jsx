@@ -482,6 +482,9 @@ async function compressImageForUpload(file) {
         </div>
       </section>
 
+      {/* 24-Hour Auto-Expiring History Section */}
+      <History key={historyKey} refreshKey={historyKey} />
+
       {/* How it Works Section */}
       <section id="how-it-works" className="visro-how">
         <div className="visro-how__container">
