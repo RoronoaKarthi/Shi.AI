@@ -1,6 +1,7 @@
 import { useState } from "react";
 import UploadSlot from "./UploadSlot.jsx";
 import History from "./History.jsx";
+import { saveSwapToClientHistory } from "../utils/historyStore.js";
 import "./Workbench.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
@@ -131,6 +132,13 @@ async function compressImageForUpload(file) {
       const blob = await res.blob();
       setResultUrl(URL.createObjectURL(blob));
       setStatus("done");
+
+      try {
+        await saveSwapToClientHistory(blob, { resolution: "4K UHD (3840px)" });
+      } catch (saveErr) {
+        console.warn("Client history notice:", saveErr);
+      }
+
       setHistoryKey((k) => k + 1);
       onSwapComplete?.();
     } catch (err) {

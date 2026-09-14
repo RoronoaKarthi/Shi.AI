@@ -187,31 +187,15 @@ const customProvider = {
       return outUrl;
     };
 
-    let resultUrl = null;
-
-    if (isServerless) {
-      // In serverless cloud, prioritize the fast GPU pipeline to strictly respect Vercel's 10s ceiling
+    // Always prioritize the InsightFace + GFPGANv1.4 neural restoration pipeline for maximum facial clarity
+    try {
+      resultUrl = await runGfpganPipeline();
+    } catch (err) {
+      console.warn(`[luffy.ai Engine] GFPGAN pipeline notice (${err.message}), falling back to alternative pipeline...`);
       try {
         resultUrl = await runFastPipeline();
-      } catch (err) {
-        console.warn(`[luffy.ai Engine] Fast pipeline notice (${err.message}), trying GFPGAN pipeline...`);
-        try {
-          resultUrl = await runGfpganPipeline();
-        } catch (err2) {
-          throw new Error(`Face swap processing error: ${err2.message || err.message}`);
-        }
-      }
-    } else {
-      // In local/dedicated environment, attempt GFPGAN first for maximum neural restoration
-      try {
-        resultUrl = await runGfpganPipeline();
-      } catch (err) {
-        console.warn(`[luffy.ai Engine] GFPGAN pipeline notice (${err.message}), trying fallback...`);
-        try {
-          resultUrl = await runFastPipeline();
-        } catch (err2) {
-          throw new Error(`Face swap processing error: ${err2.message || err.message}`);
-        }
+      } catch (err2) {
+        throw new Error(`Face swap processing error: ${err2.message || err.message}`);
       }
     }
 

@@ -11,6 +11,7 @@ import provider from "../backend/services/faceSwapProvider.js";
 import { addSwapRecord } from "../backend/services/historyService.js";
 
 export const config = {
+  maxDuration: 60,
   api: {
     bodyParser: false,
   },

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { getClientHistory, deleteClientHistoryItem, clearAllClientHistory } from "../utils/historyStore.js";
 import "./History.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
@@ -8,14 +9,39 @@ export default function History({ refreshKey = 0 }) {
   const [loading, setLoading] = useState(true);
   const [previewImage, setPreviewImage] = useState(null);
 
+  const getItemUrl = (url) => {
+    if (!url) return "";
+    if (url.startsWith("data:") || url.startsWith("blob:") || url.startsWith("http")) return url;
+    return `${API_BASE}${url}`;
+  };
+
   async function fetchHistory() {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/api/history`);
-      if (res.ok) {
-        const data = await res.json();
-        setItems(data.history || []);
+      // 1. Fetch persistent 24h history from client-side IndexedDB
+      const clientItems = await getClientHistory();
+
+      // 2. Fetch server history if available
+      let serverItems = [];
+      try {
+        const res = await fetch(`${API_BASE}/api/history`);
+        if (res.ok) {
+          const data = await res.json();
+          serverItems = data.history || [];
+        }
+      } catch {}
+
+      // 3. Merge without duplicate IDs
+      const seen = new Set();
+      const merged = [];
+      for (const item of [...clientItems, ...serverItems]) {
+        if (!seen.has(item.id)) {
+          seen.add(item.id);
+          merged.push(item);
+        }
       }
+
+      setItems(merged);
     } catch (err) {
       console.warn("Could not fetch history:", err.message);
     } finally {
@@ -30,10 +56,9 @@ export default function History({ refreshKey = 0 }) {
   async function handleDelete(id, e) {
     e.stopPropagation();
     try {
-      const res = await fetch(`${API_BASE}/api/history/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        setItems((prev) => prev.filter((i) => i.id !== id));
-      }
+      await deleteClientHistoryItem(id);
+      fetch(`${API_BASE}/api/history/${id}`, { method: "DELETE" }).catch(() => {});
+      setItems((prev) => prev.filter((i) => i.id !== id));
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -42,10 +67,9 @@ export default function History({ refreshKey = 0 }) {
   async function handleClearAll() {
     if (!window.confirm("Are you sure you want to clear all history immediately?")) return;
     try {
-      const res = await fetch(`${API_BASE}/api/history`, { method: "DELETE" });
-      if (res.ok) {
-        setItems([]);
-      }
+      await clearAllClientHistory();
+      fetch(`${API_BASE}/api/history`, { method: "DELETE" }).catch(() => {});
+      setItems([]);
     } catch (err) {
       console.error("Clear all failed:", err);
     }
@@ -54,7 +78,7 @@ export default function History({ refreshKey = 0 }) {
   function handleDownload(item, e) {
     e.stopPropagation();
     const link = document.createElement("a");
-    link.href = `${API_BASE}${item.url}`;
+    link.href = getItemUrl(item.url);
     link.download = `luffy-ai-4k-${item.id.slice(0, 8)}.png`;
     document.body.appendChild(link);
     link.click();
@@ -124,11 +148,11 @@ export default function History({ refreshKey = 0 }) {
               <div
                 key={item.id}
                 className="visro-history-card"
-                onClick={() => setPreviewImage(`${API_BASE}${item.url}`)}
+                onClick={() => setPreviewImage(getItemUrl(item.url))}
               >
                 <div className="visro-history-card__media">
                   <img
-                    src={`${API_BASE}${item.url}`}
+                    src={getItemUrl(item.url)}
                     alt="Swapped result"
                     loading="lazy"
                   />
