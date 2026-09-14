@@ -147,6 +147,11 @@ const mockProvider = {
     const buf = await fs.readFile(targetImagePath);
     return await ensure4KResolution(buf);
   },
+  async swapMultipleFaces({ targetImagePath }) {
+    await delay(500);
+    const buf = await fs.readFile(targetImagePath);
+    return await ensure4KResolution(buf);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -229,6 +234,61 @@ const customProvider = {
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[luffy.ai Engine] 4K face swap successfully completed in ${elapsed}s!`);
+    return master4K;
+  },
+
+  async swapMultipleFaces({ targetImagePath, sourceFacePaths = [] }) {
+    const startTime = Date.now();
+    console.log(`[luffy.ai Engine] Starting Multiple Face Swap (${sourceFacePaths.length} faces)...`);
+
+    let currentBuffer = await fs.readFile(targetImagePath);
+
+    for (let i = 0; i < sourceFacePaths.length; i++) {
+      const facePath = sourceFacePaths[i];
+      console.log(`[luffy.ai Engine] Swapping Face #${i + 1}/${sourceFacePaths.length}...`);
+      const faceBuffer = await fs.readFile(facePath);
+
+      const srcBlob = new Blob([faceBuffer], { type: "image/jpeg" });
+      const destBlob = new Blob([currentBuffer], { type: "image/jpeg" });
+
+      let resultUrl = null;
+
+      // Swap pass: Try GFPGAN restoration space first, then fast pipeline fallback
+      try {
+        const app = await getZerovicClient();
+        const res = await app.predict("/predict", {
+          target_image: destBlob,
+          swap_image: srcBlob,
+        });
+        const outItem = res?.data?.[0];
+        resultUrl = outItem?.url || (typeof outItem === "string" ? outItem : null);
+        if (!resultUrl) throw new Error("GFPGAN space did not return a valid result URL.");
+      } catch (err) {
+        zerovicClient = null;
+        console.warn(`[luffy.ai Engine] Multi-swap face #${i + 1} fallback notice: ${err.message}`);
+        try {
+          const app = await getTonyassiClient();
+          const res = await app.predict("/swap_faces", {
+            src_img: srcBlob,
+            dest_img: destBlob,
+          });
+          const outItem = res?.data?.[0];
+          resultUrl = outItem?.url || (typeof outItem === "string" ? outItem : null);
+          if (!resultUrl) throw new Error("Could not detect a clear face to swap.");
+        } catch (err2) {
+          tonyassiClient = null;
+          throw new Error(`Multi-face swap processing error on face #${i + 1}: ${err2.message || err.message}`);
+        }
+      }
+
+      currentBuffer = await downloadImageResult(resultUrl);
+    }
+
+    console.log("[luffy.ai Engine] Outputting pristine 4K UHD Multi-Person Master...");
+    const master4K = await ensure4KResolution(currentBuffer);
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[luffy.ai Engine] Multi-face swap (${sourceFacePaths.length} faces) successfully completed in ${elapsed}s!`);
     return master4K;
   },
 };

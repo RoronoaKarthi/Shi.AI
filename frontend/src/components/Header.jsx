@@ -23,8 +23,8 @@ export default function Header() {
         <a href="#features" className="header__nav-item">
           AI Image
         </a>
-        <a href="#features" className="header__nav-item">
-          AI Video
+        <a href="#workbench" className="header__nav-item">
+          Multiple Faces
         </a>
         <a href="#how-it-works" className="header__nav-item">
           How it Works

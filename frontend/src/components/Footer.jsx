@@ -25,6 +25,7 @@ export default function Footer() {
             <ul className="visro-footer__nav-list">
               <li><a href="#workbench">AI Face Swap</a></li>
               <li><a href="#workbench">Single Face Swap</a></li>
+              <li><a href="#workbench">Multiple Face Swap</a></li>
               <li><a href="#workbench">4K UHD Resolution</a></li>
             </ul>
           </div>

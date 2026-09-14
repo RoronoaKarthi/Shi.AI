@@ -12,6 +12,12 @@ const PROCESSING_STEPS = [
   "Rendering strict 4K UHD Master (3840px)...",
 ];
 
+const MULTI_PROCESSING_STEPS = [
+  "Detecting 3D facial landmarks for all people in photo...",
+  "Transferring multiple facial identities & skin tones...",
+  "Rendering strict 4K Multi-Person Master (3840px)...",
+];
+
 const SAMPLE_PORTRAITS = [
   { id: "s1", url: "/samples/sample1.jpg", name: "Classic Portrait" },
   { id: "s2", url: "/samples/sample2.jpg", name: "Freckles Model" },
@@ -23,13 +29,17 @@ export default function Workbench({ onSwapComplete }) {
   const [sourceFace, setSourceFace] = useState(null);
   const [target, setTarget] = useState(null);
   const [mode, setMode] = useState("single"); // "single" | "multi"
+  const [multiFaces, setMultiFaces] = useState([null, null]); // Start with 2 face slots
   const [status, setStatus] = useState("idle"); // "idle" | "working" | "done" | "error"
   const [activeStep, setActiveStep] = useState(0);
   const [resultUrl, setResultUrl] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [historyKey, setHistoryKey] = useState(0);
 
-  const canSubmit = sourceFace && target && status !== "working";
+  const canSubmit =
+    mode === "multi"
+      ? Boolean(target && multiFaces.filter(Boolean).length >= 2 && status !== "working")
+      : Boolean(sourceFace && target && status !== "working");
 
   function resetOutputs() {
     setStatus("idle");
@@ -42,6 +52,7 @@ export default function Workbench({ onSwapComplete }) {
     resetOutputs();
     setSourceFace(null);
     setTarget(null);
+    setMultiFaces([null, null]);
   }
 
 // Fast client-side image compressor: downsizes to max 1280px at 0.9 JPEG quality if > 450KB
@@ -102,21 +113,40 @@ async function compressImageForUpload(file) {
     resetOutputs();
     setStatus("working");
 
+    const steps = mode === "multi" ? MULTI_PROCESSING_STEPS : PROCESSING_STEPS;
     let currentStep = 0;
     const stepInterval = setInterval(() => {
-      currentStep = (currentStep + 1) % PROCESSING_STEPS.length;
+      currentStep = (currentStep + 1) % steps.length;
       setActiveStep(currentStep);
     }, 1500);
 
     try {
-      const [uploadSource, uploadTarget] = await Promise.all([
-        compressImageForUpload(sourceFace),
-        compressImageForUpload(target),
-      ]);
-
       const form = new FormData();
-      form.append("sourceFace", uploadSource);
-      form.append("target", uploadTarget);
+
+      if (mode === "multi") {
+        const validFaces = multiFaces.filter(Boolean);
+        const [uploadTarget, ...uploadFaces] = await Promise.all([
+          compressImageForUpload(target),
+          ...validFaces.map((f) => compressImageForUpload(f)),
+        ]);
+
+        form.append("target", uploadTarget);
+        form.append("mode", "multi");
+        form.append("faceCount", String(uploadFaces.length));
+        form.append("sourceFace", uploadFaces[0]); // fallback
+        uploadFaces.forEach((f, idx) => {
+          form.append(`sourceFace${idx + 1}`, f);
+        });
+      } else {
+        const [uploadSource, uploadTarget] = await Promise.all([
+          compressImageForUpload(sourceFace),
+          compressImageForUpload(target),
+        ]);
+        form.append("sourceFace", uploadSource);
+        form.append("target", uploadTarget);
+        form.append("mode", "single");
+      }
+
       const res = await fetch(`${API_BASE}/api/swap`, {
         method: "POST",
         body: form,
@@ -134,7 +164,9 @@ async function compressImageForUpload(file) {
       setStatus("done");
 
       try {
-        await saveSwapToClientHistory(blob, { resolution: "4K UHD (3840px)" });
+        await saveSwapToClientHistory(blob, {
+          resolution: mode === "multi" ? "4K UHD Multi-Person" : "4K UHD (3840px)",
+        });
       } catch (saveErr) {
         console.warn("Client history notice:", saveErr);
       }
@@ -224,7 +256,7 @@ async function compressImageForUpload(file) {
                   <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
                 Multiple Faces
-                <span className="visro-mode-badge">Beta</span>
+                <span className="visro-mode-badge">4K UHD</span>
               </button>
             </div>
 
@@ -239,35 +271,136 @@ async function compressImageForUpload(file) {
             
             {/* Left Column: Upload Slots & Action Button */}
             <div className="visro-controls-col">
-              <div className="visro-upload-stack">
-                <UploadSlot
-                  stepNumber={1}
-                  title="Source Image with Face"
-                  subText="Click or drag original face photo"
-                  limit="≤ 30MB"
-                  iconType="image"
-                  file={sourceFace}
-                  samples={SAMPLE_PORTRAITS}
-                  onChange={(f) => {
-                    setSourceFace(f);
-                    resetOutputs();
-                  }}
-                />
+              {mode === "single" ? (
+                <div className="visro-upload-stack">
+                  <UploadSlot
+                    stepNumber={1}
+                    title="Source Image with Face"
+                    subText="Click or drag original face photo"
+                    limit="≤ 30MB"
+                    iconType="image"
+                    file={sourceFace}
+                    samples={SAMPLE_PORTRAITS}
+                    onChange={(f) => {
+                      setSourceFace(f);
+                      resetOutputs();
+                    }}
+                  />
 
-                <UploadSlot
-                  stepNumber={2}
-                  title="Target Face to Swap In"
-                  subText="Click or drag replacement face portrait"
-                  limit="≤ 30MB"
-                  iconType="person"
-                  file={target}
-                  samples={SAMPLE_PORTRAITS}
-                  onChange={(f) => {
-                    setTarget(f);
-                    resetOutputs();
-                  }}
-                />
-              </div>
+                  <UploadSlot
+                    stepNumber={2}
+                    title="Target Face to Swap In"
+                    subText="Click or drag replacement face portrait"
+                    limit="≤ 30MB"
+                    iconType="person"
+                    file={target}
+                    samples={SAMPLE_PORTRAITS}
+                    onChange={(f) => {
+                      setTarget(f);
+                      resetOutputs();
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="visro-upload-stack">
+                  <UploadSlot
+                    stepNumber={1}
+                    title="Group Photo (2+ People)"
+                    subText="Click or drag photo containing multiple people"
+                    limit="≤ 30MB"
+                    iconType="image"
+                    file={target}
+                    samples={SAMPLE_PORTRAITS}
+                    onChange={(f) => {
+                      setTarget(f);
+                      resetOutputs();
+                    }}
+                  />
+
+                  <div className="multi-faces-wrap" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: "14px", fontWeight: "700", color: "var(--text)" }}>
+                        Step 2: Replacement Faces ({multiFaces.length} People)
+                      </span>
+                      <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+                        Left-to-right order
+                      </span>
+                    </div>
+
+                    {multiFaces.map((faceFile, idx) => (
+                      <div key={idx} style={{ position: "relative" }}>
+                        <UploadSlot
+                          stepNumber={`2.${idx + 1}`}
+                          title={`Replacement Face #${idx + 1} (${idx === 0 ? "Left Person" : idx === 1 ? "Right Person" : `Person ${idx + 1}`})`}
+                          subText={`Upload replacement portrait for person ${idx + 1}`}
+                          limit="≤ 30MB"
+                          iconType="person"
+                          file={faceFile}
+                          samples={SAMPLE_PORTRAITS}
+                          onChange={(f) => {
+                            const updated = [...multiFaces];
+                            updated[idx] = f;
+                            setMultiFaces(updated);
+                            resetOutputs();
+                          }}
+                        />
+                        {multiFaces.length > 2 && (
+                          <button
+                            type="button"
+                            style={{
+                              position: "absolute",
+                              top: "8px",
+                              right: "8px",
+                              background: "#fee2e2",
+                              border: "1px solid #fca5a5",
+                              color: "#dc2626",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              borderRadius: "6px",
+                              padding: "3px 8px",
+                              cursor: "pointer",
+                              zIndex: 10,
+                            }}
+                            onClick={() => {
+                              setMultiFaces(multiFaces.filter((_, i) => i !== idx));
+                              resetOutputs();
+                            }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    {multiFaces.length < 4 && (
+                      <button
+                        type="button"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "8px",
+                          padding: "10px",
+                          border: "1px dashed #6366f1",
+                          borderRadius: "12px",
+                          background: "rgba(99, 102, 241, 0.05)",
+                          color: "#4f46e5",
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => setMultiFaces([...multiFaces, null])}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="5" x2="12" y2="19"/>
+                          <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        + Add Another Replacement Face (Person {multiFaces.length + 1})
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Start Face Swapping Action Button */}
               <button
@@ -279,7 +412,7 @@ async function compressImageForUpload(file) {
                 {status === "working" ? (
                   <>
                     <span className="visro-btn-spinner" />
-                    <span>Generating 4K Swap...</span>
+                    <span>{mode === "multi" ? "Generating 4K Multi-Swap..." : "Generating 4K Swap..."}</span>
                   </>
                 ) : (
                   <>
@@ -290,7 +423,7 @@ async function compressImageForUpload(file) {
                       <path d="M3 5h4"/>
                       <path d="M17 19h4"/>
                     </svg>
-                    <span>Start Face Swapping</span>
+                    <span>{mode === "multi" ? "Start Multi-Face Swap" : "Start Face Swapping"}</span>
                   </>
                 )}
               </button>

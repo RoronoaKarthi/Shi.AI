@@ -29,6 +29,10 @@ const upload = multer({
 const uploadFields = upload.fields([
   { name: "sourceFace", maxCount: 1 },
   { name: "target", maxCount: 1 },
+  { name: "sourceFace1", maxCount: 1 },
+  { name: "sourceFace2", maxCount: 1 },
+  { name: "sourceFace3", maxCount: 1 },
+  { name: "sourceFace4", maxCount: 1 },
 ]);
 
 function runMiddleware(req, res, fn) {
@@ -60,32 +64,76 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "upload_error", message: err.message });
   }
 
-  const sourceFace = req.files?.sourceFace?.[0];
   const target = req.files?.target?.[0];
-  if (!sourceFace || !target) {
+  if (!target) {
     return res.status(400).json({
       error: "missing_files",
-      message: "Both sourceFace and target images are required.",
+      message: "Target image is required.",
     });
   }
 
-  const sourceExt = path.extname(sourceFace.originalname) || ".png";
+  // Collect all provided source face files
+  const rawSources = [];
+  if (req.files?.sourceFace?.[0]) rawSources.push(req.files.sourceFace[0]);
+  if (req.files?.sourceFace1?.[0]) rawSources.push(req.files.sourceFace1[0]);
+  if (req.files?.sourceFace2?.[0]) rawSources.push(req.files.sourceFace2[0]);
+  if (req.files?.sourceFace3?.[0]) rawSources.push(req.files.sourceFace3[0]);
+  if (req.files?.sourceFace4?.[0]) rawSources.push(req.files.sourceFace4[0]);
+
+  // Deduplicate by internal uploaded path
+  const uniqueSources = [];
+  const seen = new Set();
+  for (const s of rawSources) {
+    if (!seen.has(s.path)) {
+      seen.add(s.path);
+      uniqueSources.push(s);
+    }
+  }
+
+  if (uniqueSources.length === 0) {
+    return res.status(400).json({
+      error: "missing_files",
+      message: "At least one replacement face photo is required.",
+    });
+  }
+
   const targetExt = path.extname(target.originalname) || ".png";
-  const sourcePath = `${sourceFace.path}${sourceExt}`;
   const targetPath = `${target.path}${targetExt}`;
 
+  const sourcePaths = [];
+  const toClean = [targetPath, target.path];
+
   try {
-    await fs.rename(sourceFace.path, sourcePath);
     await fs.rename(target.path, targetPath);
 
-    const resultBuffer = await provider.swapImage({
-      sourceFacePath: sourcePath,
-      targetImagePath: targetPath,
-    });
+    for (const sf of uniqueSources) {
+      const ext = path.extname(sf.originalname) || ".png";
+      const sfPath = `${sf.path}${ext}`;
+      await fs.rename(sf.path, sfPath);
+      sourcePaths.push(sfPath);
+      toClean.push(sfPath, sf.path);
+    }
+
+    const isMulti = req.body?.mode === "multi" || sourcePaths.length > 1;
+    let resultBuffer;
+
+    if (isMulti && sourcePaths.length > 1) {
+      resultBuffer = await provider.swapMultipleFaces({
+        targetImagePath: targetPath,
+        sourceFacePaths: sourcePaths,
+      });
+    } else {
+      resultBuffer = await provider.swapImage({
+        sourceFacePath: sourcePaths[0],
+        targetImagePath: targetPath,
+      });
+    }
 
     let historyRecord = null;
     try {
-      historyRecord = await addSwapRecord(resultBuffer, { resolution: "4K UHD (3840px)" });
+      historyRecord = await addSwapRecord(resultBuffer, {
+        resolution: isMulti ? "4K UHD Multi-Person" : "4K UHD (3840px)",
+      });
     } catch (histErr) {
       console.warn("[History Service] Could not save:", histErr.message);
     }
@@ -105,11 +153,6 @@ export default async function handler(req, res) {
     console.error("[api/swap serverless error]:", err);
     return res.status(502).json({ error: "provider_error", message: err.message });
   } finally {
-    await Promise.all([
-      fs.unlink(sourcePath).catch(() => {}),
-      fs.unlink(targetPath).catch(() => {}),
-      fs.unlink(sourceFace.path).catch(() => {}),
-      fs.unlink(target.path).catch(() => {}),
-    ]);
+    await Promise.all(toClean.map((p) => fs.unlink(p).catch(() => {})));
   }
 }
