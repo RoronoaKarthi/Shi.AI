@@ -7,7 +7,32 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 export default function History({ refreshKey = 0 }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [previewImage, setPreviewImage] = useState(null);
+  const [previewIndex, setPreviewIndex] = useState(null);
+
+  const activeItem = previewIndex !== null && items[previewIndex] ? items[previewIndex] : null;
+
+  const handlePrev = (e) => {
+    e?.stopPropagation();
+    if (items.length <= 1) return;
+    setPreviewIndex((prev) => (prev > 0 ? prev - 1 : items.length - 1));
+  };
+
+  const handleNext = (e) => {
+    e?.stopPropagation();
+    if (items.length <= 1) return;
+    setPreviewIndex((prev) => (prev < items.length - 1 ? prev + 1 : 0));
+  };
+
+  useEffect(() => {
+    if (previewIndex === null) return;
+    const onKeyDown = (e) => {
+      if (e.key === "ArrowLeft") handlePrev();
+      else if (e.key === "ArrowRight") handleNext();
+      else if (e.key === "Escape") setPreviewIndex(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewIndex, items.length]);
 
   const getItemUrl = (url) => {
     if (!url) return "";
@@ -144,11 +169,11 @@ export default function History({ refreshKey = 0 }) {
           </div>
         ) : (
           <div className="visro-history__grid">
-            {items.map((item) => (
+            {items.map((item, index) => (
               <div
                 key={item.id}
                 className="visro-history-card"
-                onClick={() => setPreviewImage(getItemUrl(item.url))}
+                onClick={() => setPreviewIndex(index)}
               >
                 <div className="visro-history-card__media">
                   <img
@@ -201,25 +226,94 @@ export default function History({ refreshKey = 0 }) {
           </div>
         )}
 
-        {/* Modal Lightbox Preview */}
-        {previewImage && (
+        {/* Modal Lightbox Preview with Next & Previous Navigation */}
+        {activeItem && (
           <div
             className="visro-history__lightbox"
-            onClick={() => setPreviewImage(null)}
+            onClick={() => setPreviewIndex(null)}
           >
+            {/* Previous Button (Visible when multiple swaps exist) */}
+            {items.length > 1 && (
+              <button
+                type="button"
+                className="visro-history__lightbox-nav visro-history__lightbox-nav--prev"
+                onClick={handlePrev}
+                title="Previous Swap (Left Arrow key)"
+                aria-label="Previous swap"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
+            )}
+
             <div
               className="visro-history__lightbox-inner"
               onClick={(e) => e.stopPropagation()}
             >
-              <img src={previewImage} alt="Full size preview" />
+              <img src={getItemUrl(activeItem.url)} alt="Full size preview" />
+
+              {/* Lightbox Top Control Bar */}
+              <div className="visro-history__lightbox-topbar">
+                <div className="visro-history__lightbox-counter">
+                  {items.length > 1 ? `${previewIndex + 1} of ${items.length}` : "4K UHD Master"}
+                </div>
+
+                <div className="visro-history__lightbox-top-actions">
+                  <button
+                    type="button"
+                    className="visro-history__lightbox-btn-dl"
+                    onClick={(e) => handleDownload(activeItem, e)}
+                    title="Download 4K Master PNG"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Download 4K
+                  </button>
+
+                  <button
+                    type="button"
+                    className="visro-history__lightbox-close"
+                    onClick={() => setPreviewIndex(null)}
+                    title="Close preview (Esc)"
+                    aria-label="Close preview"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+
+              {/* Lightbox Bottom Metadata Bar */}
+              <div className="visro-history__lightbox-bottombar">
+                <span className="visro-history__lightbox-badge">
+                  {activeItem.resolution || "4K UHD"}
+                </span>
+                <span className="visro-history__lightbox-time">
+                  ⏳ {activeItem.remainingTime} left
+                </span>
+                <span className="visro-history__lightbox-date">
+                  {formatDate(activeItem.createdAt)}
+                </span>
+              </div>
+            </div>
+
+            {/* Next Button (Visible when multiple swaps exist) */}
+            {items.length > 1 && (
               <button
                 type="button"
-                className="visro-history__lightbox-close"
-                onClick={() => setPreviewImage(null)}
+                className="visro-history__lightbox-nav visro-history__lightbox-nav--next"
+                onClick={handleNext}
+                title="Next Swap (Right Arrow key)"
+                aria-label="Next swap"
               >
-                ×
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
               </button>
-            </div>
+            )}
           </div>
         )}
       </div>

@@ -266,43 +266,143 @@
 .visro-history__lightbox {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(6px);
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
   z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 24px 80px;
+  user-select: none;
 }
 
 .visro-history__lightbox-inner {
   position: relative;
-  max-width: 90vw;
-  max-height: 90vh;
+  max-width: 86vw;
+  max-height: 86vh;
   border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.65);
   background: #000000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .visro-history__lightbox-inner img {
-  max-width: 90vw;
-  max-height: 90vh;
+  max-width: 86vw;
+  max-height: 86vh;
   object-fit: contain;
   display: block;
 }
 
-.visro-history__lightbox-close {
+/* Lightbox Nav Buttons (Prev & Next) */
+.visro-history__lightbox-nav {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1020;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.visro-history__lightbox-nav:hover {
+  background: #6366f1;
+  border-color: #818cf8;
+  color: #ffffff;
+  transform: translateY(-50%) scale(1.1);
+  box-shadow: 0 12px 28px rgba(99, 102, 241, 0.45);
+}
+
+.visro-history__lightbox-nav:active {
+  transform: translateY(-50%) scale(0.96);
+}
+
+.visro-history__lightbox-nav--prev {
+  left: 24px;
+}
+
+.visro-history__lightbox-nav--next {
+  right: 24px;
+}
+
+/* Lightbox Top Control Bar */
+.visro-history__lightbox-topbar {
   position: absolute;
   top: 14px;
-  right: 14px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.visro-history__lightbox-topbar > * {
+  pointer-events: auto;
+}
+
+.visro-history__lightbox-counter {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  padding: 6px 14px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+}
+
+.visro-history__lightbox-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.visro-history__lightbox-btn-dl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #6366f1;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+}
+
+.visro-history__lightbox-btn-dl:hover {
+  background: #4f46e5;
+  transform: translateY(-1px);
+}
+
+.visro-history__lightbox-close {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   background: rgba(15, 23, 42, 0.8);
   color: #ffffff;
   font-size: 22px;
+  line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -313,4 +413,60 @@
 .visro-history__lightbox-close:hover {
   background: #ffffff;
   color: #0f172a;
+}
+
+/* Lightbox Bottom Metadata Bar */
+.visro-history__lightbox-bottombar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 20px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10;
+}
+
+.visro-history__lightbox-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  background: #6366f1;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+}
+
+.visro-history__lightbox-time {
+  font-size: 12px;
+  color: #a7f3d0;
+  font-weight: 600;
+}
+
+.visro-history__lightbox-date {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-left: auto;
+}
+
+@media (max-width: 768px) {
+  .visro-history__lightbox {
+    padding: 16px;
+  }
+  .visro-history__lightbox-nav {
+    width: 42px;
+    height: 42px;
+  }
+  .visro-history__lightbox-nav--prev {
+    left: 8px;
+  }
+  .visro-history__lightbox-nav--next {
+    right: 8px;
+  }
+  .visro-history__lightbox-btn-dl {
+    display: none;
+  }
 }
